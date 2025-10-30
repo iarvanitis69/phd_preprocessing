@@ -97,7 +97,7 @@ def instrument_correction_all():
 
                 if corrected:
                     from obspy import Stream
-                    Stream(corrected).write(output_path, format="MSEED")
+                    Stream(corrected).write(output_path, format="MSEED", encoding="STEIM2")
                     print(f"✅ Αποθηκεύτηκε: {output_path}")
                 else:
                     print(f"⚠️ Δεν δημιουργήθηκε έξοδος για {file}")

@@ -4,7 +4,7 @@
 import multiprocessing
 import os
 
-from demean_detrend import demean_detrend_instrumentCorrection
+from demean_detrend import demean_detrend
 from fourier_transformation import find_max_freq
 from gaps import find_files_for_gaps
 from glitches import find_files_for_glitches_parallel, delete_files_with_glitches
@@ -18,10 +18,6 @@ os.makedirs(LOG_DIR, exist_ok=True)
 OVERLAPS_LOG_FILE = os.path.join(LOG_DIR, "overlaps.json")
 GAPS_FILE = os.path.join(LOG_DIR, "gaps.json")  # ✅ αρχείο εξόδου
 LOG_FILE = os.path.join(LOG_DIR, "missing_mseed_files.log")
-
-
-def demean_detrend():
-    pass
 
 
 def main():
@@ -47,7 +43,7 @@ def main():
     #delete_files_with_glitches()
 
     # print("🔍 κάνει deMean/detrend σε όλα τα mseed αρχεια...")
-    #demean_detrend()
+    demean_detrend()
 
     # print("🔍 κάνει instrumentCorrection σε όλα τα mseed αρχεια...")
     #instrument_correction()

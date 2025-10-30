@@ -30,7 +30,7 @@ def write_error(error_path, event_dir, station, channel, message):
     print(f"🛑 Σφάλμα: {event_key}/{station}/{channel} → {message}")
 
 
-def demean_detrend_all():
+def demean_detrend():
     from main import BASE_DIR
 
     logs_dir = os.path.join(BASE_DIR, "Logs")
@@ -60,7 +60,10 @@ def demean_detrend_all():
                 print(f"📄 Επεξεργασία: {file}")
                 st.detrend("demean")
                 st.detrend("linear")
-                st.write(output_path, format="MSEED")
+                for tr in st:
+                    tr.data = tr.data.astype("int32")
+
+                st.write(output_path, format="MSEED", encoding="STEIM2")
                 print(f"✅ Αποθηκεύτηκε: {output_path}")
             except Exception as e:
                 msg = f"Σφάλμα: {e}"
