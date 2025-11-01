@@ -27,38 +27,44 @@ The following procedure should be executed only once. If you already have instal
 #### Linux
 
 1. Download the latest installer for Linux:
-
+```bash
    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-
+```
 2. Run the installer:
-
+```bash
    bash Miniconda3-latest-Linux-x86_64.sh
-
+```
    Follow the on-screen instructions (press Enter, accept license, choose install location, etc).
 
 3. After installation, run:
-
+```bash
    source ~/.bashrc
    conda --version
+```
 
-
-### 1️⃣ Clone the Repository
+### Clone the Repository
 ```bash
 git clone https://github.com/iarvanitis69/phd_preprocessing.git
 cd phd_preprocessing
 ```
 
 ### Activate Basic Conda Commands
+
+1. Change directory
 ```bash
-1. cd phd_preprocessing
+cd phd_preprocessing
+```
 2. Install Conda environment/depenndencies
+```bash
    conda env create -f environment.yml 
+````
 3. Activate Conda environment
+```bash
    conda activate phd_cond_env
 ```
 ---
 
-## 🚀 Event Base Execution
+## Event Base Execution
 
 ### Run the DataAcquisition Project
 ```bash
