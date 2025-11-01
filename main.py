@@ -39,7 +39,7 @@ def main():
     #find_files_for_overlaps()
 
     #print("🔍 Ξεκινάει ο εντοπισμός glitches σε .mseed αρχεία...")
-    #find_files_for_glitches_parallel(threshold=1.3, max_workers=6)
+    find_files_for_glitches_parallel(threshold=1.3, max_workers=6)
 
     # print("🔍 Ξεκινάει η διαγραφή stations με glitches σε .mseed αρχεία...")
     #delete_files_with_glitches()

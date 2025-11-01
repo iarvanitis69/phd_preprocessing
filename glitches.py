@@ -99,37 +99,48 @@ def find_files_for_glitches_parallel(threshold: float = 1.0, max_workers: int = 
 
 def process_single_event(event_path: str, threshold: float):
     """
-    Επεξεργάζεται ένα σεισμικό γεγονός και γράφει κάθε glitch
-    άμεσα στο glitches.json με το νέο format.
+    Επεξεργάζεται ένα σεισμικό γεγονός.
+    Αγνοεί τελείως τα .xml και εντοπίζει όλα τα .mseed αρχεία.
     """
     event_info = extract_event_info(os.path.basename(event_path))
     event_name = event_info["event_folder"]
-    for station in sorted(os.listdir(event_path)):
-        station_path = os.path.join(event_path, station)
-        mseed_path = os.path.join(station_path, "mseed")
-        if not os.path.isdir(mseed_path):
-            continue
 
-        for fname in os.listdir(mseed_path):
-            if not fname.endswith(".mseed"):
-                continue
-
-            full_path = os.path.join(mseed_path, fname)
-            try:
-               st = read(full_path)
-               for tr in st:
-                   glitches = find_glitches(tr, threshold=threshold)
-                   if glitches:
-                        for g in glitches:
-                            g["file"] = fname
-                        station_id = f"{tr.stats.network}.{tr.stats.station}"
-                        append_to_json_file(event_name, station_id, tr.stats.channel, glitches)
-                        print(
-                            f"📈 {event_name} | {tr.stats.station} | {tr.stats.channel} | {len(glitches)} glitches")
-            except Exception as e:
-                print(f"⚠️ Σφάλμα στο αρχείο {fname}: {e}")
+    for root, _, files in os.walk(event_path):
+        for f in files:
+            if f.endswith(".mseed"):
+                full_path = os.path.join(root, f)
+                try:
+                    process_mseed_file(full_path, event_name, threshold)
+                except Exception as e:
+                    print(f"❌ Αποτυχία στο {f}: {e}")
 
     return f"✅ Ολοκληρώθηκε: {event_name}"
+
+def process_mseed_file(mseed_path: str, event_name: str, threshold: float):
+    """
+    Διαβάζει .mseed, βρίσκει glitches, και τα αποθηκεύει στο Logs/glitches.json.
+    Αγνοεί πλήρως .xml (δεν κάνει instrument correction).
+    """
+    try:
+        st = read(mseed_path)
+    except Exception as e:
+        print(f"❌ Αποτυχία ανάγνωσης {mseed_path}: {e}")
+        return
+
+    for tr in st:
+        glitches = find_glitches(tr, threshold=threshold)
+        if glitches:
+            for g in glitches:
+                g["file"] = os.path.basename(mseed_path)  # προσθέτει info για debugging
+            append_to_json_file(
+                event_name=event_name,
+                station=tr.stats.station,
+                channel=tr.stats.channel,
+                glitches=glitches
+            )
+            print(f"📌 {event_name} | {tr.id} | {len(glitches)} glitches")
+
+
 
 def append_to_json_file(event_name, station, channel, glitches):
     """
