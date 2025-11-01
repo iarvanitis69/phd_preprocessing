@@ -1,6 +1,7 @@
 import os
 import json
-from obspy import read, Trace
+from obspy import read
+
 
 def find_gaps_in_file(file_path):
     """
@@ -18,7 +19,6 @@ def find_gaps_in_file(file_path):
 
             gap_type = "Interpolation" if missing_samples <= 10 else "NaN values"
 
-            # Υπολογίζουμε χρόνους λίγο πριν και λίγο μετά το gap (για αναφορά)
             prev_time = str(starttime - 0.01)
             next_time = str(endtime + 0.01)
 
@@ -51,8 +51,12 @@ def find_files_for_gaps():
         for file in files:
             if file.endswith(".mseed"):
                 full_path = os.path.join(root, file)
+
+                # Χρήσιμο σχετικό path για το JSON log
+                from main import BASE_DIR
                 rel_path = os.path.relpath(full_path, BASE_DIR)
-                print("Find gaps in file:"+file)
+
+                print("🔍 Ελέγχεται για gaps: " + rel_path)
                 gaps = find_gaps_in_file(full_path)
                 if gaps:
                     all_gaps[rel_path] = gaps
@@ -62,4 +66,4 @@ def find_files_for_gaps():
     with open(GAPS_FILE, "w", encoding="utf-8") as f:
         json.dump(all_gaps, f, indent=2, ensure_ascii=False)
 
-    print("✅ Ολοκληρώθηκε με επιτυχία η αναζητηση και καταγραφη gaps.")
+    print("✅ Ολοκληρώθηκε με επιτυχία η αναζήτηση και καταγραφή gaps.")

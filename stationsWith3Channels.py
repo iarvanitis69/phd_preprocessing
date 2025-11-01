@@ -2,33 +2,32 @@ import os
 import json
 import shutil
 
-def count_mseed_files(mseed_path):
-    if not os.path.isdir(mseed_path):
+def count_mseed_files(station_path):
+    """Μετρά τα .mseed αρχεία απευθείας μέσα στον φάκελο του σταθμού."""
+    if not os.path.isdir(station_path):
         return 0
-    return len([f for f in os.listdir(mseed_path) if f.endswith(".mseed")])
+    return len([f for f in os.listdir(station_path) if f.endswith(".mseed")])
 
-def find_stations_with_nofChannelsL3_json_file():
+def find_stations_with_nofChannelsL3():
     """
-    Εντοπίζει σταθμούς με ≠ 3 .mseed αρχεία και τους προσθέτει στο JSON αρχείο
-    Logs/nofChannelsL3.json, χωρίς να ξαναγράφει το αρχείο από την αρχή.
-    Διατηρεί συνολικό μετρητή "Account of stations with channels lower than 3".
+    Εντοπίζει σταθμούς με <3 .mseed αρχεία και τους προσθέτει στο JSON:
+    Logs/nofChannelsL3.json, χωρίς να ξαναγράφει όλο το αρχείο.
     """
+    #from main import BASE_EVENTS_DIR as BASE_DIR
+
     from main import BASE_DIR
-
     logs_dir = os.path.join(BASE_DIR, "Logs")
     os.makedirs(logs_dir, exist_ok=True)
     output_path = os.path.join(logs_dir, "nofChannelsL3.json")
 
-    # Διάβασε υπάρχον JSON αν υπάρχει
     if os.path.exists(output_path):
         with open(output_path, "r", encoding="utf-8") as f:
             data = json.load(f)
     else:
-        data = {"Account of stations with channels lower than 3": 0}
+        data = {"Count of stations with channels lower than 3": 0}
 
-    total_count = data.get("Account of stations with channels lower than 3", 0)
+    total_count = data.get("Count of stations with channels lower than 3", 0)
 
-    # Κεντρική δομή με τα events
     for year in sorted(os.listdir(BASE_DIR)):
         year_path = os.path.join(BASE_DIR, year)
         if not os.path.isdir(year_path) or year.lower() == "logs":
@@ -41,40 +40,31 @@ def find_stations_with_nofChannelsL3_json_file():
 
             for station in sorted(os.listdir(event_path)):
                 station_path = os.path.join(event_path, station)
-                if not os.path.isdir(station_path) or station.lower() == "info.txt":
+                if not os.path.isdir(station_path):
                     continue
 
-                mseed_path = os.path.join(station_path, "mseed")
-                file_count = count_mseed_files(mseed_path)
+                file_count = count_mseed_files(station_path)
 
-                if file_count != 3:
+                if file_count < 3:
                     if event not in data:
                         data[event] = {}
 
-                    # Αν ο σταθμός δεν υπάρχει ήδη στο JSON για το event, προσθέτουμε
                     if station not in data[event]:
-                        data[event][station] = {
-                            "nofChannels": file_count
-                        }
+                        data[event][station] = {"nofChannels": file_count}
                         total_count += 1
 
-    # Ενημέρωσε το συνολικό μετρητή
-    data["Account of stations with channels lower than 3"] = total_count
+    data["Count of stations with channels lower than 3"] = total_count
 
-    # Αποθήκευση JSON
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
     print(f"[✔] Ενημερώθηκε: {output_path} ({total_count} σταθμοί συνολικά)")
 
-def delete_stations_with_nofChannels_l3():
-    """
-    Διαγράφει όλους τους σταθμούς που έχουν λιγότερα από 3 .mseed αρχεία,
-    βάσει του αρχείου Logs/nofChannelsL3.json. Αν διαγραφούν όλοι οι σταθμοί ενός event,
-    διαγράφεται και ο φάκελος του event.
-    """
-    from main import BASE_DIR
 
+def delete_stations_with_nofChannels_l3():
+    """Διαγράφει σταθμούς με <3 .mseed βάσει του JSON."""
+
+    from main import BASE_DIR
     logs_dir = os.path.join(BASE_DIR, "Logs")
     json_path = os.path.join(logs_dir, "nofChannelsL3.json")
 
@@ -89,17 +79,14 @@ def delete_stations_with_nofChannels_l3():
     count_deleted_events = 0
 
     for event, stations in data.items():
-        if event == "Account of stations with channels lower than 3":
+        if event == "Count of stations with channels lower than 3":
             continue
 
-        event_path = None
+        year = event[:4]
+        event_path = os.path.join(BASE_DIR, year, event)
 
         for station in stations:
-            # Βρες το path του σταθμού
-            year = event[:4]
-            event_path = os.path.join(BASE_DIR, year, event)
             station_path = os.path.join(event_path, station)
-
             if os.path.isdir(station_path):
                 try:
                     shutil.rmtree(station_path)
@@ -108,7 +95,6 @@ def delete_stations_with_nofChannels_l3():
                 except Exception as e:
                     print(f"[ΣΦΑΛΜΑ] Δεν διαγράφηκε {station_path}: {e}")
 
-        # Αν ο φάκελος του event υπάρχει και είναι πλέον άδειος → διαγραφή
         if event_path and os.path.isdir(event_path) and len(os.listdir(event_path)) == 0:
             try:
                 shutil.rmtree(event_path)
@@ -118,4 +104,3 @@ def delete_stations_with_nofChannels_l3():
                 print(f"[ΣΦΑΛΜΑ] Δεν διαγράφηκε ο φάκελος event: {event_path}: {e}")
 
     print(f"\n[✔] Ολοκληρώθηκε: Διαγράφηκαν {count_deleted_stations} σταθμοί και {count_deleted_events} event φάκελοι.")
-

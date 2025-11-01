@@ -8,8 +8,10 @@ from demean_detrend import demean_detrend
 from fourier_transformation import find_max_freq
 from gaps import find_files_for_gaps
 from glitches import find_files_for_glitches_parallel, delete_files_with_glitches
+from instument_correction import instrument_correction
 from overlaps import find_files_for_overlaps
-from stationsWith3Channels import find_stations_with_nofChannelsL3_json_file, delete_stations_with_nofChannels_l3
+from snrGt5 import find_snr_lt_5
+from stationsWith3Channels import find_stations_with_nofChannelsL3, delete_stations_with_nofChannels_l3
 
 # === ΡΥΘΜΙΣΕΙΣ ===
 BASE_DIR = "/media/iarv/Samsung/Events"  # 👉 άλλαξέ το αν χρειάζεται
@@ -25,7 +27,7 @@ def main():
     lock = multiprocessing.Manager().Lock()
 
     # Αν θες μόνο καταγραφή:
-    #find_stations_with_nofChannelsL3_json_file()
+    #find_stations_with_nofChannelsL3()
 
     # Αν θες διαγραφή:
     #delete_stations_with_nofChannels_l3()
@@ -43,7 +45,7 @@ def main():
     #delete_files_with_glitches()
 
     # print("🔍 κάνει deMean/detrend σε όλα τα mseed αρχεια...")
-    demean_detrend()
+    #demean_detrend()
 
     # print("🔍 κάνει instrumentCorrection σε όλα τα mseed αρχεια...")
     #instrument_correction()
@@ -62,7 +64,6 @@ def main():
 
     # print("🔍 φιλτραρισμα όλων των αρχείων ...")
     #filter_all_files()()
-
 
 
 
