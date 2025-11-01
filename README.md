@@ -3,10 +3,10 @@ This repository contains the code for pre-prosessing.
 ---
 ## 🧩 Complete Activity Diagram
 
-<img src="img.png" alt="img" width="400"/>
+<img src="images/img.png" alt="img" width="400"/>
 
 ## 🧩 Pre-Processing
-<img src="img_1.png" alt="img_1" width="400"/>
+<img src="images/img_1.png" alt="img_1" width="400"/>
 
 ## 🧩 Installation
 

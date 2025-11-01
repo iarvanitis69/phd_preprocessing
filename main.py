@@ -8,7 +8,7 @@ from demean_detrend import demean_detrend
 from fourier_transformation import find_max_freq
 from gaps import find_files_for_gaps
 from glitches import find_files_for_glitches_parallel, delete_files_with_glitches
-from instument_correction import instrument_correction
+from instrument_correction import instrument_correction
 from overlaps import find_files_for_overlaps
 from snrGt5 import find_snr_lt_5
 from stationsWith3Channels import find_stations_with_nofChannelsL3, delete_stations_with_nofChannels_l3
