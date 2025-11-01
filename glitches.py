@@ -64,11 +64,13 @@ def find_glitches(trace: Trace, threshold, window_size: int = 2):
                 "end_index": i + 2 * window_size,
                 "channel": trace.stats.channel,
                 "station": trace.stats.station,
+                "network": trace.stats.network,
                 "start_time": str(trace.stats.starttime + i / trace.stats.sampling_rate),
                 "end_time": str(trace.stats.starttime + (i + 2 * window_size) / trace.stats.sampling_rate),
                 "peak_rise": round(peak_rise, 4),
                 "peak_fall": round(peak_fall, 4)
             })
+
     return glitches
 
 def find_files_for_glitches_parallel(threshold: float = 1.0, max_workers: int = 4):
@@ -146,12 +148,13 @@ def append_to_json_file(event_name, station, channel, glitches):
     """
     Προσθέτει τα glitches ενός καναλιού μέσα στο Logs/glitches.json
     στο σωστό format:
-    event → station → channel → {count, glitches: [...]}
+    event → network.station → channel → {count, glitches: [...]}
     """
     from main import BASE_DIR
     logs_path = os.path.join(BASE_DIR, "Logs")
     os.makedirs(logs_path, exist_ok=True)
     output_file = os.path.join(logs_path, "glitches.json")
+
     import multiprocessing
     lock = multiprocessing.Manager().Lock()
     with lock:
@@ -165,20 +168,26 @@ def append_to_json_file(event_name, station, channel, glitches):
         else:
             data = {}
 
+        # ➕ Δημιουργία κλειδιού station ως network.station
+        net = glitches[0].get("network", "XX")  # προεπιλογή αν δεν υπάρχει
+        net_station_key = f"{net}.{station}"
+
         # --- Ενημέρωση δομής ---
         if event_name not in data:
             data[event_name] = {}
-        if station not in data[event_name]:
-            data[event_name][station] = {}
-        if channel not in data[event_name][station]:
-            data[event_name][station][channel] = {"count": 0, "glitches": []}
+        if net_station_key not in data[event_name]:
+            data[event_name][net_station_key] = {}
+        if channel not in data[event_name][net_station_key]:
+            data[event_name][net_station_key][channel] = {"count": 0, "glitches": []}
 
         # --- Προσθήκη νέων glitches ---
-        data[event_name][station][channel]["glitches"].extend(glitches)
-        data[event_name][station][channel]["count"] += len(glitches)
+        data[event_name][net_station_key][channel]["glitches"].extend(glitches)
+        data[event_name][net_station_key][channel]["count"] += len(glitches)
+
         # --- Εγγραφή στο αρχείο ---
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+
 
 def delete_files_with_glitches():
     """
