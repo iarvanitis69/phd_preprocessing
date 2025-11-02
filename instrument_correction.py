@@ -1,145 +1,175 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Βήμα 2: Instrument Correction σε .VTU αρχεία
---------------------------------------------
-Διαβάζει κάθε *_demean_detrend.vtu (που περιέχει όλα τα κανάλια),
-κάνει διόρθωση οργάνου χρησιμοποιώντας το αντίστοιχο StationXML
-και αποθηκεύει το αποτέλεσμα ως:
-  *_demean_detrend_instCorrection.vtu
+Βήμα 2: Instrument Correction σε *_demean_detrend.mseed
+-------------------------------------------------------
+Επεξεργάζεται δομή φακέλων:
+  /media/iarv/Samsung/Events/<Year>/<Event>/<Station>/
+
+✅ Αν υπάρχουν ήδη όλα τα *_demean_detrend_IC.mseed αρχεία σε ένα σταθμό,
+   ο σταθμός παραλείπεται (resume-friendly).
+✅ Αν υπάρχουν μερικά, συνεχίζει μόνο για τα υπόλοιπα.
+✅ Αντιμετωπίζει λάθος dtype / encoding, διορθώνει XMLs με NotEnumeratedValue.
+✅ Γράφει FLOAT32 (encoding=3).
 """
 
 import os
 import json
 import numpy as np
-import pyvista as pv
-from obspy import Trace, Stream, UTCDateTime, read_inventory
+from obspy import read, read_inventory
+
+# ---------------------------------------------------------
+BASE_DIR = "/media/iarv/Samsung"
+EVENTS_DIR = os.path.join(BASE_DIR, "Events")
+LOGS_DIR = os.path.join(BASE_DIR, "Logs")
+os.makedirs(LOGS_DIR, exist_ok=True)
+ERROR_PATH = os.path.join(LOGS_DIR, "InstrumentCorrectionError.json")
+# ---------------------------------------------------------
 
 
-def write_error(error_path, event_dir, station, channel, message, net_code=None):
-    """Καταγραφή σφάλματος σε JSON."""
-    clean_message = " ".join(str(message).split())
-
-    if os.path.exists(error_path):
+def write_error(year, event, station, channel, message):
+    """Καταγράφει σφάλματα σε JSON με ιεραρχία Year→Event→Station→Channel."""
+    if os.path.exists(ERROR_PATH):
         try:
-            with open(error_path, "r", encoding="utf-8") as f:
+            with open(ERROR_PATH, "r", encoding="utf-8") as f:
                 errors = json.load(f)
         except json.JSONDecodeError:
-            print(f"⚠️ Προειδοποίηση: Το {os.path.basename(error_path)} ήταν άδειο – δημιουργείται νέο.")
             errors = {}
     else:
         errors = {}
-
-    event_key = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(event_dir))))
-    net_sta_key = f"{net_code}.{station}" if net_code else station
-
-    errors.setdefault(event_key, {})
-    errors[event_key].setdefault(net_sta_key, {})
-    errors[event_key][net_sta_key][channel] = clean_message
-
-    with open(error_path, "w", encoding="utf-8") as f:
-        json.dump(errors, f, indent=2, ensure_ascii=False, sort_keys=True)
+    errors.setdefault(year, {}).setdefault(event, {}).setdefault(station, {}).setdefault(channel, []).append(str(message))
+    with open(ERROR_PATH, "w", encoding="utf-8") as f:
+        json.dump(errors, f, indent=2, ensure_ascii=False)
 
 
-def instrument_correction_vtu():
-    """Διόρθωση οργάνου για όλα τα .vtu που περιέχουν τα 3 κανάλια μαζί."""
-    from main import BASE_DIR
+def validate_and_fix_inventory(inv, xml_path=None):
+    """Διορθώνει NotEnumeratedValue σε COUNTS/M/S."""
+    modified = False
+    for net in inv:
+        for sta in net:
+            for cha in sta:
+                if not hasattr(cha, "response") or cha.response is None:
+                    continue
+                for stage in cha.response.response_stages:
+                    if getattr(stage, "input_units", None) == "NotEnumeratedValue":
+                        stage.input_units = "COUNTS"
+                        modified = True
+                    if getattr(stage, "output_units", None) == "NotEnumeratedValue":
+                        stage.output_units = "M/S"
+                        modified = True
+                sens = getattr(cha.response, "instrument_sensitivity", None)
+                if sens:
+                    if getattr(sens, "input_units", None) == "NotEnumeratedValue":
+                        sens.input_units = "COUNTS"
+                        modified = True
+                    if getattr(sens, "output_units", None) == "NotEnumeratedValue":
+                        sens.output_units = "M/S"
+                        modified = True
+    if modified and xml_path:
+        print(f"⚙️ Διορθώθηκε StationXML: {xml_path}")
+    return inv
 
-    logs_dir = os.path.join(BASE_DIR, "Logs")
-    os.makedirs(logs_dir, exist_ok=True)
-    error_path = os.path.join(logs_dir, "InstrumentCorrectionError.json")
 
-    for root, _, files in os.walk(BASE_DIR):
-        if "Logs" in root:
+def ensure_int32_encoding(input_path):
+    """Αν το αρχείο έχει λάθος dtype για Steim2, επανακωδικοποιείται σε INT32 προσωρινά."""
+    try:
+        return read(input_path)
+    except Exception as e:
+        if "Wrong dtype" in str(e):
+            print(f"⚠️ {os.path.basename(input_path)}: επανακωδικοποίηση σε Steim2 INT32...")
+            st_raw = read(input_path, decode_data=False)
+            for tr in st_raw:
+                tr.data = np.asarray(tr.data, dtype=np.int32)
+            fixed = input_path + ".tmp"
+            st_raw.write(fixed, format="MSEED", encoding=11)
+            return read(fixed)
+        raise
+
+
+def station_is_complete(station_dir):
+    """Αν υπάρχουν ήδη και τα τρία *_demean_detrend_IC.mseed (HHE, HHN, HHZ), επιστρέφει True."""
+    ic_files = [f for f in os.listdir(station_dir) if f.endswith("_demean_detrend_IC.mseed")]
+    if len(ic_files) >= 3:  # θεωρούμε πλήρη όταν υπάρχουν 3 κανάλια
+        return True
+    return False
+
+
+def process_station_dir(station_dir, year, event):
+    """Επεξεργάζεται όλα τα *_demean_detrend.mseed σε έναν σταθμό."""
+    station = os.path.basename(station_dir)
+
+    # Αν υπάρχουν ήδη όλα τα IC → skip station
+    if station_is_complete(station_dir):
+        print(f"⏩ Ο σταθμός {station} είναι ήδη πλήρης, παράκαμψη.")
+        return
+
+    mseed_list = sorted(f for f in os.listdir(station_dir) if f.endswith("_demean_detrend.mseed"))
+    if not mseed_list:
+        return
+
+    xml_guess = os.path.join(station_dir, f"{station}.xml")
+
+    for file in mseed_list:
+        input_path = os.path.join(station_dir, file)
+        output_path = input_path.replace("_demean_detrend.mseed", "_demean_detrend_IC.mseed")
+
+        if os.path.exists(output_path):
+            print(f"⏩ Παράκαμψη (υπάρχει ήδη): {output_path}")
             continue
 
-        for file in files:
-            if not file.endswith("_demean_detrend.vtu"):
-                continue
+        try:
+            st = ensure_int32_encoding(input_path)
+        except Exception as e:
+            write_error(year, event, station, "UNKNOWN", f"Αποτυχία ανάγνωσης {file}: {e}")
+            continue
 
-            input_path = os.path.join(root, file)
-            output_path = input_path.replace(
-                "_demean_detrend.vtu", "_demean_detrend_instCorrection.vtu"
-            )
-
-            if os.path.exists(output_path):
-                print(f"⏩ Παράκαμψη (υπάρχει ήδη): {output_path}")
+        for tr in list(st):
+            net, sta, cha = tr.stats.network or "UNK", tr.stats.station or "UNK", tr.stats.channel or "UNK"
+            xml1 = os.path.join(station_dir, f"{net}.{sta}.xml")
+            xml_path = xml1 if os.path.exists(xml1) else xml_guess
+            if not os.path.exists(xml_path):
+                write_error(year, event, station, cha, f"Δεν βρέθηκε StationXML για {net}.{sta}")
+                st.remove(tr)
                 continue
 
             try:
-                pdata = pv.read(input_path)
-                channels = [key for key in pdata.point_data.keys() if key.startswith("HH")]
-                if not channels:
-                    raise ValueError("Δεν εντοπίστηκαν πεδία καναλιών (HHE/HHN/HHZ) στο VTU αρχείο.")
+                inv = read_inventory(xml_path)
+                inv = validate_and_fix_inventory(inv, xml_path)
+                tr.remove_response(inventory=inv, output="VEL", zero_mean=True, taper=True, taper_fraction=0.05)
+                tr.data = np.nan_to_num(tr.data, nan=0.0).astype(np.float32)
+            except Exception as e:
+                write_error(year, event, station, cha, f"Αποτυχία remove_response: {e}")
+                st.remove(tr)
 
-                # Κοινός χρόνος
-                times = pdata.points[:, 0]
-                dt = np.mean(np.diff(times))
-                sampling_rate = 1.0 / dt
-                start_time = UTCDateTime(0)  # Δεν έχουμε absolute χρόνο στο VTU
+        if len(st) == 0:
+            continue
 
-                # Εξαγωγή στοιχείων σταθμού από το filename
-                # π.χ. HL.SANT__20250125T065655Z__20250125T070025Z_demean_detrend.vtu
-                base = os.path.splitext(file)[0]
-                parts = base.split("__")
-                if len(parts) >= 3:
-                    net_sta = parts[0]  # π.χ. HL.SANT
-                    net_code, sta_code = net_sta.split(".")
-                else:
-                    net_code, sta_code = "XX", "STAT"
+        try:
+            st.write(output_path, format="MSEED")
+            print(f"✅ {station}/{os.path.basename(output_path)}")
+        except Exception as e:
+            write_error(year, event, station, "WRITE_FAIL", f"Αποτυχία αποθήκευσης {output_path}: {e}")
 
-                loc_code = ""
 
-                # Αναζήτηση StationXML στον ίδιο φάκελο
-                station_dir = os.path.dirname(input_path)
-                xml_files = [f for f in os.listdir(station_dir) if f.endswith(".xml")]
-                target_xml = f"{net_code}.{sta_code}.xml"
-                xml_match = [f for f in xml_files if f.lower() == target_xml.lower()]
-                if not xml_match:
-                    write_error(error_path, root, sta_code, "ALL",
-                                f"Δεν βρέθηκε StationXML για {net_code}.{sta_code}", net_code)
+def instrument_correction_all():
+    """Διατρέχει όλη τη δομή Events/<Year>/<Event>/<Station>/"""
+    for year in sorted(os.listdir(EVENTS_DIR)):
+        year_dir = os.path.join(EVENTS_DIR, year)
+        if not os.path.isdir(year_dir):
+            continue
+
+        for event in sorted(os.listdir(year_dir)):
+            event_dir = os.path.join(year_dir, event)
+            if not os.path.isdir(event_dir):
+                continue
+
+            for station in sorted(os.listdir(event_dir)):
+                station_dir = os.path.join(event_dir, station)
+                if not os.path.isdir(station_dir):
                     continue
 
-                xml_path = os.path.join(station_dir, xml_match[0])
-                inventory = read_inventory(xml_path)
-
-                corrected_channels = {}
-
-                for chan in channels:
-                    try:
-                        data = pdata[chan]
-                        tr = Trace(data=data.astype(np.float32))
-                        tr.stats.network = net_code
-                        tr.stats.station = sta_code
-                        tr.stats.channel = chan
-                        tr.stats.location = loc_code
-                        tr.stats.starttime = start_time
-                        tr.stats.sampling_rate = sampling_rate
-
-                        inv_sel = inventory.select(network=net_code, station=sta_code,
-                                                   location=loc_code, channel=chan,
-                                                   time=tr.stats.starttime)
-                        _ = inv_sel.get_response(tr.id, tr.stats.starttime)
-
-                        tr.remove_response(inventory=inv_sel, output="VEL",
-                                           zero_mean=False, taper=False)
-                        corrected_channels[chan] = tr.data.astype(np.float32)
-
-                    except Exception as e:
-                        write_error(error_path, root, sta_code, chan,
-                                    f"Σφάλμα διόρθωσης οργάνου: {e}", net_code)
-
-                if corrected_channels:
-                    for chan, corr_data in corrected_channels.items():
-                        pdata[chan] = corr_data
-                    pdata.save(output_path)
-                    print(f"✅ Ολοκληρώθηκε: {output_path}")
-                else:
-                    print(f"⚠️ Καμία επιτυχής διόρθωση καναλιού: {file}")
-
-            except Exception as e:
-                msg = f"❌ Σφάλμα κατά την επεξεργασία {file}: {e}"
-                print(msg)
-                write_error(error_path, root, "Unknown", "Unknown", msg, "Unknown")
+                process_station_dir(station_dir, year, event)
 
 
+if __name__ == "__main__":
+    instrument_correction_all()

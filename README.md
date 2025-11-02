@@ -67,7 +67,7 @@ cd phd_preprocessing
 ````
 3. Activate Conda environment
 ```bash
-   conda activate phd_cond_env
+   conda activate phd_cond_env_p10
 ```
 ---
 

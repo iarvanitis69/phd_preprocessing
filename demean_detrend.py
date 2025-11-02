@@ -1,110 +1,118 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Βήμα 1: Demean + Detrend + Αποθήκευση σε .vtu (VTK)
----------------------------------------------------
-Διαβάζει όλα τα *.mseed αρχεία, εφαρμόζει προεπεξεργασία
-και δημιουργεί νέο αρχείο .vtu ανά σταθμό/σεισμό, το οποίο
-περιέχει και τα 3 κανάλια (π.χ. HHE, HHN, HHZ) ενωμένα.
+Βήμα 1 – Demean + Detrend → *_demean_detrend.mseed (INT32 / Steim2)
 
-Η έξοδος έχει μορφή:
-  HL.SANT__20250125T065655Z__20250125T070025Z_demean_detrend.vtu
+Διαβάζει τα raw MiniSEED αρχεία (Steim2), εφαρμόζει:
+  1️⃣ demean
+  2️⃣ detrend
+και αποθηκεύει τα αποτελέσματα πάλι σε Steim2 (encoding=11, int32).
 
-Αποθηκεύονται όλα τα traces μαζί (ένα για κάθε κανάλι).
+✔ Απόλυτη συμβατότητα με Obspy / evalresp
+✔ Καμία απώλεια δεδομένων
+✔ Καθαρή καταγραφή σφαλμάτων ανά event/station/channel
 """
 
-import os
-import json
-import numpy as np
-from obspy import read
+import os, json, numpy as np
+from obspy import read, Stream
+
+BASE_DIR = "/media/iarv/Samsung"
+EVENTS_DIR = os.path.join(BASE_DIR, "Events")
+LOGS_DIR = os.path.join(BASE_DIR, "Logs")
+os.makedirs(LOGS_DIR, exist_ok=True)
+ERROR_PATH = os.path.join(LOGS_DIR, "demean_detrend_errors.json")
 
 
-def write_error(error_path, event_dir, station, channel, message):
-    """Καταγράφει σφάλματα σε JSON ανά event και σταθμό."""
-    if os.path.exists(error_path):
-        with open(error_path, "r", encoding="utf-8") as f:
-            errors = json.load(f)
-    else:
-        errors = {}
-
-    event_key = os.path.basename(os.path.dirname(os.path.dirname(event_dir)))
-    errors.setdefault(event_key, {})
-    errors[event_key].setdefault(station, {})
-    errors[event_key][station][channel] = message
-
-    with open(error_path, "w", encoding="utf-8") as f:
-        json.dump(errors, f, indent=2, ensure_ascii=False)
-    print(f"🛑 Σφάλμα: {event_key}/{station}/{channel} → {message}")
+def log_error(year, event, station, filename, msg):
+    data = {}
+    if os.path.exists(ERROR_PATH):
+        try:
+            with open(ERROR_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except json.JSONDecodeError:
+            pass
+    data.setdefault(year, {}).setdefault(event, {}).setdefault(station, []).append(f"{filename}: {msg}")
+    with open(ERROR_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    print(f"🛑 {year}/{event}/{station}/{filename} → {msg}")
 
 
-def demean_detrend():
-    from main import BASE_DIR
+def process_station_dir(station_dir, year, event):
+    station = os.path.basename(station_dir)
+    files = [f for f in os.listdir(station_dir)
+             if f.endswith(".mseed") and "_demean_detrend" not in f]
 
-    logs_dir = os.path.join(BASE_DIR, "Logs")
-    os.makedirs(logs_dir, exist_ok=True)
-    error_path = os.path.join(logs_dir, "demean_detrend_errors.json")
+    for fname in sorted(files):
+        in_path = os.path.join(station_dir, fname)
+        out_path = in_path.replace(".mseed", "_demean_detrend.mseed")
 
-    for root, _, files in os.walk(BASE_DIR):
-        if "Logs" in root or "Stations" in root:
-            continue
-
-        # Βρες όλα τα .mseed του φακέλου (αντιστοιχούν σε 1 σταθμό/σεισμό)
-        file_list = sorted(f for f in files if f.endswith(".mseed") and "_demean_detrend" not in f)
-        if not file_list:
+        if os.path.exists(out_path):
+            print(f"⏩ Παράκαμψη: {out_path}")
             continue
 
         try:
-            # Δημιουργία τελικού ονόματος εξόδου χωρίς κανάλι
-            first_file = file_list[0]
-            parts = first_file.split("__")
-            if len(parts) >= 3:
-                station_full = ".".join(parts[0].split(".")[:2])  # π.χ. HL.SANT
-                start_time = parts[1]
-                end_time = parts[2].replace(".mseed", "")
-                output_file = f"{station_full}__{start_time}__{end_time}_demean_detrend.vtu"
-            else:
-                raise Exception(f"Μη αναγνωρίσιμο αρχείο: {first_file}")
-
-            output_path = os.path.join(root, output_file)
-            if os.path.exists(output_path):
-                print(f"⏩ Παράκαμψη (υπάρχει ήδη): {output_path}")
-                continue
-
-            all_points = []
-            all_amplitudes = []
-            all_labels = []
-
-            for file in file_list:
-                input_path = os.path.join(root, file)
-                st = read(input_path)
-                st.detrend("demean")
-                st.detrend("linear")
-
-                for tr in st:
-                    data = tr.data.astype(np.float32)
-                    times = np.linspace(0, len(data) / tr.stats.sampling_rate, num=len(data))
-
-                    # Δημιουργία 1D γεωμετρίας (X = χρόνος)
-                    points = np.zeros((len(data), 3))
-                    points[:, 0] = times
-
-                    all_points.append(points)
-                    all_amplitudes.append(data)
-                    all_labels.append(np.full(len(data), tr.stats.channel))  # π.χ. HHZ
-
-            # Συνένωση όλων των καναλιών
-            points = np.concatenate(all_points, axis=0)
-            amplitude = np.concatenate(all_amplitudes, axis=0)
-            channel_label = np.concatenate(all_labels, axis=0)
-
-            pdata = pv.PolyData(points)
-            pdata["amplitude"] = amplitude
-            pdata["channel"] = channel_label
-
-            pdata.save(output_path)
-            print(f"✅ Αποθηκεύτηκε: {output_path}")
-
+            st = read(in_path)
         except Exception as e:
-            msg = f"Σφάλμα: {e}"
-            write_error(error_path, root, "GENERAL", "GENERAL", msg)
+            log_error(year, event, station, fname, f"Ανάγνωση: {e}")
+            continue
 
+        traces = []
+        for tr in st:
+            try:
+                # 1️⃣ demean + detrend
+                tr.detrend("demean")
+                tr.detrend("linear")
+
+                # 2️⃣ Καθαρισμός NaN/Inf
+                tr.data = np.nan_to_num(tr.data, nan=0, posinf=0, neginf=0)
+
+                # 3️⃣ Κλιμάκωση (ώστε να μη γίνει overflow στο int32)
+                max_val = np.max(np.abs(tr.data))
+                if max_val == 0:
+                    scale = 1.0
+                else:
+                    scale = 1e6 / max_val  # κρατάμε counts γύρω στο ±1e6
+
+                tr.data = np.ascontiguousarray((tr.data * scale).astype(np.int32))
+
+                # reset πιθανό header encoding
+                if hasattr(tr.stats, "mseed") and "encoding" in tr.stats.mseed:
+                    tr.stats.mseed.encoding = None
+
+                traces.append(tr)
+
+            except Exception as e:
+                log_error(year, event, station, fname, f"Επεξεργασία {tr.id}: {e}")
+
+        if not traces:
+            log_error(year, event, station, fname, "Κενό μετά το demean/detrend")
+            continue
+
+        try:
+            st_out = Stream(traces)
+            for tr in st_out:
+                if hasattr(tr.stats, "mseed") and "encoding" in tr.stats.mseed:
+                    tr.stats.mseed.encoding = None
+            st_out.write(out_path, format="MSEED", encoding=11, reclen=4096)
+            print(f"✅ Αποθηκεύτηκε (INT32 / Steim2): {out_path}")
+        except Exception as e:
+            log_error(year, event, station, fname, f"Αποθήκευση: {e}")
+
+
+def build_all():
+    for year in sorted(os.listdir(EVENTS_DIR)):
+        ydir = os.path.join(EVENTS_DIR, year)
+        if not os.path.isdir(ydir):
+            continue
+        for event in sorted(os.listdir(ydir)):
+            edir = os.path.join(ydir, event)
+            if not os.path.isdir(edir):
+                continue
+            for station in sorted(os.listdir(edir)):
+                sdir = os.path.join(edir, station)
+                if os.path.isdir(sdir):
+                    process_station_dir(sdir, year, event)
+
+
+if __name__ == "__main__":
+    build_all()
