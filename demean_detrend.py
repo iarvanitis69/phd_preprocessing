@@ -99,9 +99,10 @@ def process_station_dir(station_dir, year, event):
             log_error(year, event, station, fname, f"Αποθήκευση: {e}")
 
 
-def build_all():
+def demean_detrend():
     for year in sorted(os.listdir(EVENTS_DIR)):
-        ydir = os.path.join(EVENTS_DIR, year)
+        ydir = (os.path.
+                join(EVENTS_DIR, year))
         if not os.path.isdir(ydir):
             continue
         for event in sorted(os.listdir(ydir)):
@@ -115,4 +116,4 @@ def build_all():
 
 
 if __name__ == "__main__":
-    build_all()
+    demean_detrend()

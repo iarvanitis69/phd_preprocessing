@@ -151,7 +151,7 @@ def process_station_dir(station_dir, year, event):
             write_error(year, event, station, "WRITE_FAIL", f"Αποτυχία αποθήκευσης {output_path}: {e}")
 
 
-def instrument_correction_all():
+def instrument_correction():
     """Διατρέχει όλη τη δομή Events/<Year>/<Event>/<Station>/"""
     for year in sorted(os.listdir(EVENTS_DIR)):
         year_dir = os.path.join(EVENTS_DIR, year)
@@ -172,4 +172,4 @@ def instrument_correction_all():
 
 
 if __name__ == "__main__":
-    instrument_correction_all()
+    instrument_correction()

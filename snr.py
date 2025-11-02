@@ -105,16 +105,20 @@ def process_file(path: str):
         print(f"⚠️ Αποτυχία ανάγνωσης {path}: {e}")
         return
 
-    db = load_json(LOG_FILE)
-    if "count" not in db:
-        db["count"] = 0
+    # φόρτωση δύο logs
+    db_bad = load_json(LOG_FILE)  # snrlt5.json
+    db_good = load_json(os.path.join(LOG_DIR, "snr.json"))
+
+    if "count" not in db_bad:
+        db_bad["count"] = 0
+    if "count" not in db_good:
+        db_good["count"] = 0
 
     event_name = guess_event_name(path)
 
-    # Αν το event υπάρχει ήδη, δεν το ξαναμετράμε
-    event_exists = event_name in db
-
     event_has_low_snr = False
+    event_has_all_good = True
+    station_snr_map = {}
 
     for tr in st:
         station = getattr(tr.stats, "station", "UNK") or "UNK"
@@ -127,28 +131,60 @@ def process_file(path: str):
             print(f"⚠️ Παράλειψη {path} {station}.{channel}: {e}")
             continue
 
+        station_entry = station_snr_map.setdefault(station, {})
+        station_entry[channel] = {
+            "edge_max": edge_max,
+            "middle_max": middle_max,
+            "first_max": first_max,
+            "last_max": last_max,
+            "snr": snr
+        }
+
         if snr < 5.0:
-            insert_record(db, event_name, station, channel, edge_max, middle_max, snr, first_max, last_max)
             event_has_low_snr = True
-            print(f"✅ {event_name}/{station}/{channel}: SNR={snr:.3f} < 5 (καταχωρήθηκε)")
+            event_has_all_good = False
+            print(f"❌ {event_name}/{station}/{channel}: SNR={snr:.3f} < 5")
         else:
-            print(f"⏭️ {event_name}/{station}/{channel}: SNR={snr:.3f} ≥ 5 (παράλειψη)")
+            print(f"✅ {event_name}/{station}/{channel}: SNR={snr:.3f} ≥ 5")
 
-    # Αυξάνουμε το count ΜΟΝΟ αν είναι νέο event με SNR<5
-    if event_has_low_snr and not event_exists:
-        db["count"] += 1
-        print(f"📈 Νέο event χαμηλού SNR: {event_name} (count={db['count']})")
+    # --- Κατηγοριοποίηση ---
+    for station, channels in station_snr_map.items():
+        snr_values = [c["snr"] for c in channels.values()]
+        if all(v >= 5 for v in snr_values):
+            # όλοι οι δίαυλοι έχουν SNR >= 5 → snr.json
+            for ch, vals in channels.items():
+                insert_record(db_good, event_name, station, ch,
+                              vals["edge_max"], vals["middle_max"],
+                              vals["snr"], vals["first_max"], vals["last_max"])
+            db_good["count"] += 1
+        else:
+            # τουλάχιστον ένας δίαυλος SNR < 5 → snrlt5.json
+            for ch, vals in channels.items():
+                if vals["snr"] < 5:
+                    insert_record(db_bad, event_name, station, ch,
+                                  vals["edge_max"], vals["middle_max"],
+                                  vals["snr"], vals["first_max"], vals["last_max"])
+            db_bad["count"] += 1
 
-    save_json(LOG_FILE, db)
+    save_json(LOG_FILE, db_bad)
+    save_json(os.path.join(LOG_DIR, "snr.json"), db_good)
+
 
 def iter_mseed_files(root: str):
+    """
+    Επιστρέφει όλα τα αρχεία *_demean_detrend_IC.mseed
+    μέσα στη δομή Events/<Year>/<Event>/<Station>/
+    """
     for dirpath, _, filenames in os.walk(root):
-        if os.path.basename(dirpath).lower() == "mseed":
-            for fn in filenames:
-                if fn.lower().endswith((".mseed", ".miniseed", ".msd", ".ms")):
-                    yield os.path.join(dirpath, fn)
+        # Παράλειψε το Logs/
+        if "Logs" in dirpath:
+            continue
 
-def find_snr_lt_5():
+        for fn in filenames:
+            if fn.endswith("_demean_detrend_IC.mseed"):
+                yield os.path.join(dirpath, fn)
+
+def find_snr():
     for f in iter_mseed_files(BASE_DIR):
         process_file(f)
 
@@ -249,4 +285,5 @@ def delete_stations_with_snr_lt5():
 
 # --- Εκτέλεση συνάρτησης ---
 if __name__ == "__main__":
-    delete_stations_with_snr_lt5()
+    find_snr()
+    #delete_stations_with_snr_lt5()

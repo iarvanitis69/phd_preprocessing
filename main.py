@@ -10,7 +10,7 @@ from gaps import find_files_for_gaps
 from glitches import find_files_for_glitches_parallel, delete_files_with_glitches
 from instrument_correction import instrument_correction
 from overlaps import find_files_for_overlaps
-from snrGt5 import find_snr_lt_5
+from snr import find_snr
 from stationsWith3Channels import find_stations_with_nofChannelsL3, delete_stations_with_nofChannels_l3
 
 # === ΡΥΘΜΙΣΕΙΣ ===
@@ -51,15 +51,18 @@ def main():
     instrument_correction()
 
     # print("🔍 Ξεκινάει ο υπολογισμός SNR σε .mseed αρχεία...")
-    #find_snr_lt_5()
+    find_snr()
 
-    # print("🔍 Διαβαζει όλα τα channels από το snrl55.json και τα σβήνει...")
+    # print("🔍 Διαβαζει όλα τα stations από το snrl55.json και τα σβήνει...")
     #delete_stations_with_snr_lt5()
 
-    # print("🔍 Κόβει το pick του σήματος...")
-    #pick_segmentation()
+    # print("🔍 Βρίσκει το pick segmentation...")
+    #find_peak_segmentation()
 
-    # print("🔍 βρίσκει την μεγιστη συχνοτητα αποκοπής για όλα τα *_demean_detrend.mseed αρχεια...")
+    # print("🔍 Κρατάει μόνο το pick segmentation...")
+    #store_peak_segmentation()
+
+    #print("🔍 βρίσκει την μεγιστη συχνοτητα αποκοπής για όλα τα *_demean_detrend.mseed αρχεια...")
     #find_max_freq()
 
     # print("🔍 φιλτραρισμα όλων των αρχείων ...")
