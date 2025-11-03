@@ -51,13 +51,13 @@ def main():
     instrument_correction()
 
     # print("🔍 Ξεκινάει ο υπολογισμός SNR σε .mseed αρχεία...")
-    find_snr()
+    #find_snr()
 
     # print("🔍 Διαβαζει όλα τα stations από το snrl55.json και τα σβήνει...")
     #delete_stations_with_snr_lt5()
 
     # print("🔍 Βρίσκει το pick segmentation...")
-    #find_peak_segmentation()
+    find_peak_segmentation()
 
     # print("🔍 Κρατάει μόνο το pick segmentation...")
     #store_peak_segmentation()

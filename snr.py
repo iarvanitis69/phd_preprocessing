@@ -252,7 +252,22 @@ def delete_stations_with_snr_lt5():
 
         # Διαγραφή σταθμών
         for station_name in stations_to_delete:
-            station_path = os.path.join(event_path, station_name)
+            # Προσπάθησε να βρεις τον πραγματικό φάκελο του σταθμού
+            possible_dirs = [
+                d for d in os.listdir(event_path)
+                if os.path.isdir(os.path.join(event_path, d)) and d.endswith(station_name)
+            ]
+
+            if len(possible_dirs) == 1:
+                station_dir_name = possible_dirs[0]
+                station_path = os.path.join(event_path, station_dir_name)
+            elif len(possible_dirs) > 1:
+                # Αν υπάρχουν περισσότεροι (π.χ. HL.SANT, HA.SANT), προτίμησε HL.*
+                station_dir_name = next((d for d in possible_dirs if d.startswith("HL.")), possible_dirs[0])
+                station_path = os.path.join(event_path, station_dir_name)
+            else:
+                station_path = os.path.join(event_path, station_name)  # fallback
+
             if os.path.exists(station_path):
                 try:
                     shutil.rmtree(station_path)
@@ -285,5 +300,5 @@ def delete_stations_with_snr_lt5():
 
 # --- Εκτέλεση συνάρτησης ---
 if __name__ == "__main__":
-    find_snr()
-    #delete_stations_with_snr_lt5()
+    #find_snr()
+    delete_stations_with_snr_lt5()
