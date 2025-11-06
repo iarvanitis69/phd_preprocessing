@@ -5,7 +5,7 @@ import multiprocessing
 import os
 
 from demean_detrend import demean_detrend
-from fourier_transformation import find_max_freq
+from fourier_transformation import find_max_and_min_freq
 from gaps import find_files_for_gaps
 from glitches import find_files_for_glitches_parallel, delete_files_with_glitches
 from instrument_correction import instrument_correction
@@ -58,7 +58,7 @@ def main():
     #delete_stations_with_snr_lt5()
 
     # print("🔍 βρίσκει την μεγιστη συχνοτητα αποκοπής για όλα τα *_demean_detrend.mseed αρχεια...")
-    find_max_freq()
+    find_max_and_min_freq()
 
     # print("🔍 φιλτραρισμα όλων των αρχείων ...")
     #filter_all_files()()
