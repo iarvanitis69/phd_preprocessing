@@ -132,10 +132,6 @@ def process_file(filepath, base_dir, log_dir):
     except Exception as e:
         print(f"❌ Σφάλμα στο αρχείο {filepath}: {e}")
 
-
-
-
-
 def find_max_and_min_freq():
     from main import LOG_DIR
     json_path = os.path.join(LOG_DIR, "fourier.json")
@@ -148,33 +144,56 @@ def find_max_and_min_freq():
                 full_path = os.path.join(root, fname)
                 process_file(full_path, BASE_DIR, LOG_DIR)
 
-    # Υπολογισμός min/max cutoff
-    if os.path.exists(json_path):
-        with open(json_path, "r") as f:
-            try:
-                data_json = json.load(f)
-            except json.JSONDecodeError:
-                print("⚠️ Το JSON ήταν άδειο ή κατεστραμμένο.")
-                return
+    plot_cutoff_distributions()
 
-        cutoff_values = []
-        for ev_val in data_json.values():
-            if isinstance(ev_val, dict):
-                for stat in ev_val:
-                    for chan in ev_val[stat]:
-                        cutoff = ev_val[stat][chan].get("cutoff_freq_95_percent")
-                        if isinstance(cutoff, (int, float)):
-                            cutoff_values.append(cutoff)
+def plot_cutoff_distributions():
+    from main import LOG_DIR
+    json_path = os.path.join(LOG_DIR, "fourier.json")
+    if not os.path.exists(json_path):
+        print(f"❌ Το αρχείο {json_path} δεν βρέθηκε.")
+        return
 
-        if cutoff_values:
-            data_json["minCutoffFreq"] = round(min(cutoff_values), 3)
-            data_json["maxCutoffFreq"] = round(max(cutoff_values), 3)
+    with open(json_path, "r") as f:
+        data = json.load(f)
 
-            with open(json_path, "w") as f:
-                json.dump(data_json, f, indent=2)
+    cutoff_95_all = []
+    cutoff_5_all = []
 
-            print(f"\n📊 min: {min(cutoff_values):.2f} Hz | max: {max(cutoff_values):.2f} Hz")
-            print(f"💾 Αποθηκεύτηκαν στο: {json_path}")
+    for key, event_data in data.items():
+        if key in ["maxUpperCutoffFreq", "minLowerCutoffFreq"]:
+            continue
+        for station, station_data in event_data.items():
+            for channel, values in station_data.items():
+                try:
+                    cutoff_95_all.append(values["cutoff_freq_95_percent"])
+                    cutoff_5_all.append(values["cutoff_freq_5_percent"])
+                except Exception:
+                    continue
+
+    # --- Ομαδοποίηση ανά 5 Hz ---
+    def group_by_bin(values, bin_width=5):
+        binned = [bin_width * int(v // bin_width) for v in values]
+        return Counter(binned)
+
+    bins_95 = group_by_bin(cutoff_95_all)
+    bins_5 = group_by_bin(cutoff_5_all)
+
+    def plot_histogram(bins, title, color):
+        bin_edges = sorted(bins.keys())
+        counts = [bins[b] for b in bin_edges]
+        labels = [f"{b}-{b+5}" for b in bin_edges]
+
+        plt.figure(figsize=(10, 6))
+        plt.bar(labels, counts, width=0.6, color=color)
+        plt.title(title)
+        plt.xlabel("Συχνότητα (Hz)")
+        plt.ylabel("Πλήθος καναλιών")
+        plt.grid(axis='y', linestyle='--', alpha=0.6)
+        plt.tight_layout()
+        plt.show()
+
+    plot_histogram(bins_95, "Κατανομή cutoff_freq_95_percent ανά 5 Hz", color="green")
+    plot_histogram(bins_5, "Κατανομή cutoff_freq_5_percent ανά 5 Hz", color="purple")
 
 # ==========================================================
 if __name__ == "__main__":
