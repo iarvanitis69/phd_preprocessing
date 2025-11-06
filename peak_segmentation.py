@@ -4,7 +4,7 @@
 import os
 import json
 import numpy as np
-from obspy import read, UTCDateTime
+from obspy import read, UTCDateTime, Trace, Stream
 
 
 def load_json(path):
@@ -28,7 +28,7 @@ def insert_result(db, event, station, channel, result):
     st[channel] = result
 
 
-def find_start_end_and_peak_of_signal():
+def find_start_end_and_peak_of_signal_and_create_signal():
     from main import LOG_DIR, BASE_DIR
     from utils import aic_picker
 
@@ -74,41 +74,40 @@ def find_start_end_and_peak_of_signal():
                     pick_idx = int(np.argmax(abs_data))
                     pick_ampl = float(abs_data[pick_idx])
                     pick_time = tr.stats.starttime + pick_idx / sr
+                    end_of_peak_segment_idx = 2*pick_idx - aic_idx
+                    end_of_peak_segment_time = tr.stats.starttime + end_of_peak_segment_idx / sr
 
-                    # Κατώφλι θορύβου από snr.json
                     ch_id = tr.id.split('.')[-1]
-                    try:
-                        last_max = float(snr_data[event_name][station_name][ch_id]["last_max"])
-                        #noise_thresh = pick_ampl / snr_val
-                    except Exception as e:
-                        print(f"⚠️ Δεν βρέθηκε SNR για {event_name}/{station_name}/{ch_id}: {e}")
-                        continue
 
-                    # Εύρεση τέλους: πότε πέφτει κάτω από το noise level
-                    end_idx = None
-                    for i in range(pick_idx + 1, len(data)):
-                        if abs(data[i]) <= last_max:
-                            end_idx = i
-                            break
-                    if end_idx is None:
-                        print(f"⚠️ Δεν βρέθηκε τέλος για {tr.id}")
-                        continue
-
-                    end_time = tr.stats.starttime + end_idx / sr
-
+                    # Αποθήκευση στο JSON
                     insert_result(db, event_name, station_name, ch_id, {
                         "start_sample": int(aic_idx),
                         "start_time": str(start_time),
                         "pick_sample": int(pick_idx),
                         "pick_time": str(pick_time),
                         "pick_amplitude": pick_ampl,
-                        "end_sample": int(end_idx),
-                        "end_time": str(end_time),
-                        "aic_min_value": aic_min
+                        "end_of_peak_segment_sample": int(end_of_peak_segment_idx),
+                        "end_of_peak_segment_time": str(end_of_peak_segment_time)
                     })
 
                     save_json(OUTPUT_JSON, db)
-                    print(f"✅ {event_name}/{station_name}/{tr.id}: {str(start_time)} → {str(end_time)}")
+
+                    # Δημιουργία αρχείου PeakSegmentation
+                    seg_data = data[int(aic_idx):int(end_of_peak_segment_idx)]
+
+                    seg_trace = Trace(data=seg_data, header=tr.stats.copy())
+                    seg_trace.stats.starttime = tr.stats.starttime + aic_idx / sr
+
+                    new_filename = file.replace(
+                        "_demean_detrend_IC.mseed",
+                        "_demean_detrend_IC_PeakSegmentation.mseed"
+                    )
+                    new_path = os.path.join(root, new_filename)
+
+                    Stream([seg_trace]).write(new_path, format="MSEED")
+                    print(f"📤 Δημιουργήθηκε: {new_path}")
+
+                    print(f"✅ {event_name}/{station_name}/{tr.id}: {str(start_time)} → {str(end_of_peak_segment_time)}")
 
                 except Exception as e:
                     print(f"⚠️ Σφάλμα στο {event_name}/{station_name}/{tr.id}: {e}")
@@ -117,4 +116,4 @@ def find_start_end_and_peak_of_signal():
 
 
 if __name__ == "__main__":
-    find_start_end_and_peak_of_signal()
+    find_start_end_and_peak_of_signal_and_create_signal()
