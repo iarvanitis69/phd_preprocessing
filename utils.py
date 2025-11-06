@@ -2,23 +2,36 @@ import numpy as np
 from obspy import Trace
 from scipy.signal import firwin, filtfilt
 
+import numpy as np
+
 def aic_picker(trace_data):
     """
-    Επιστρέφει το index όπου το AIC ελαχιστοποιείται (πιθανή αρχή κύματος).
+    Υπολογίζει το AIC σε ολόκληρο το σήμα (μέχρι το pick) και επιστρέφει
+    το index όπου ελαχιστοποιείται, ως πιθανή έναρξη του σεισμικού κύματος.
 
-    :param trace_data: numpy array με το αποσυνετραρισμένο σεισμικό σήμα
-    :return: index του πιθανού σημείου έναρξης κύματος
+    :param trace_data: numpy array με το σεισμικό σήμα (float, demeaned)
+    :return: (index_έναρξης, καμπύλη_AIC)
     """
-    data = trace_data - np.mean(trace_data)
+    data = trace_data.astype(float)
     n = len(data)
-    aic = np.zeros(n)
+    if n < 3:
+        return None, np.array([])
 
-    for k in range(1, n - 1):
-        var1 = np.var(data[:k]) if k > 1 else 1e-10
-        var2 = np.var(data[k:]) if k < n - 2 else 1e-10
-        aic[k] = k * np.log(var1) + (n - k - 1) * np.log(var2)
+    pick_idx = int(np.argmax(np.abs(data)))  # μέγιστη απόλυτη τιμή
+    if pick_idx < 10:
+        return None, np.array([])  # πολύ μικρό σήμα
 
-    return np.argmin(aic), aic
+    aic = np.zeros(pick_idx)
+
+    for k in range(1, pick_idx - 1):
+        var1 = np.var(data[:k]) or 1e-10
+        var2 = np.var(data[k:pick_idx]) or 1e-10
+        aic[k] = k * np.log(var1) + (pick_idx - k - 1) * np.log(var2)
+
+    min_idx = int(np.argmin(aic[1:pick_idx - 1])) + 1
+    return min_idx, aic
+
+
 
 def apply_filter_bandpass_fir(trace_data: Trace, freqmin: float, freqmax: float, filter_order: int = 4) -> Trace:
     """

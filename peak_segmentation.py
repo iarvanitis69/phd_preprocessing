@@ -1,36 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-FindEventStart
---------------
-Για κάθε αρχείο *_demean_detrend_IC.mseed εντοπίζει τη χρονική στιγμή έναρξης
-του σεισμικού κύματος χρησιμοποιώντας τον αλγόριθμο AIC.
-
-Αποτελέσματα:
-  /media/iarv/Samsung/Logs/event_startpoints.json
-με δομή:
-{
-  "<EventName>": {
-    "<StationName>": {
-      "<ChannelName>": {
-        "start_sample": <int>,
-        "start_time": "<UTCDateTime>",
-        "aic_min_value": <float>
-      }
-    }
-  }
-}
-"""
-
 import os
 import json
 import numpy as np
 from obspy import read, UTCDateTime
 
-# ---------------------------------------------------------
-# Διαχείριση JSON
-# ---------------------------------------------------------
+
 def load_json(path):
     if os.path.exists(path):
         try:
@@ -46,24 +22,21 @@ def save_json(path, data):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-def insert_result(db, event, station, channel, start_sample, start_time, aic_min):
+def insert_result(db, event, station, channel, result):
     ev = db.setdefault(event, {})
     st = ev.setdefault(station, {})
-    ch = st.setdefault(channel, {})
-    ch.update({
-        "start_sample": start_sample,
-        "start_time": str(start_time),
-        "aic_min_value": aic_min
-    })
+    st[channel] = result
 
-# ---------------------------------------------------------
-# Κύρια συνάρτηση εντοπισμού έναρξης
-# ---------------------------------------------------------
-def find_event_start():
+
+def find_start_end_and_peak_of_signal():
     from main import LOG_DIR, BASE_DIR
-    OUTPUT_JSON = os.path.join(LOG_DIR, "event_startpoints.json")
+    from utils import aic_picker
+
+    OUTPUT_JSON = os.path.join(LOG_DIR, "event_boundaries.json")
+    SNR_JSON = os.path.join(LOG_DIR, "snr.json")
 
     db = load_json(OUTPUT_JSON)
+    snr_data = load_json(SNR_JSON)
 
     for root, _, files in os.walk(BASE_DIR):
         if "Logs" in root:
@@ -85,38 +58,63 @@ def find_event_start():
 
             for tr in st:
                 try:
-                    from utils import aic_picker
-                    idx, aic = aic_picker(tr.data.astype(float))
-                    if idx is None:
-                        print(f"⚠️ {event_name}/{station_name}/{tr.id}: αποτυχία AIC")
+                    data = tr.data.astype(float)
+                    sr = tr.stats.sampling_rate
+                    aic_idx, aic_curve = aic_picker(data)
+                    if aic_idx is None:
+                        print(f"⚠️ AIC αποτυχία για {tr.id}")
                         continue
 
-                    t0 = tr.stats.starttime + idx / tr.stats.sampling_rate
-                    aic_min = float(np.min(aic))
+                    # Χρονική στιγμή έναρξης
+                    start_time = tr.stats.starttime + aic_idx / sr
+                    aic_min = float(np.min(aic_curve))
 
-                    insert_result(
-                        db,
-                        event_name,
-                        station_name,
-                        tr.stats.channel,
-                        int(idx),
-                        t0,
-                        aic_min
-                    )
+                    # Χρονική στιγμή και τιμή pick (μέγιστη απολ. τιμή)
+                    abs_data = np.abs(data)
+                    pick_idx = int(np.argmax(abs_data))
+                    pick_ampl = float(abs_data[pick_idx])
+                    pick_time = tr.stats.starttime + pick_idx / sr
 
-                    # 💾 ΑΜΕΣΗ εγγραφή στο JSON μετά από κάθε trace
+                    # Κατώφλι θορύβου από snr.json
+                    ch_id = tr.id.split('.')[-1]
+                    try:
+                        last_max = float(snr_data[event_name][station_name][ch_id]["last_max"])
+                        #noise_thresh = pick_ampl / snr_val
+                    except Exception as e:
+                        print(f"⚠️ Δεν βρέθηκε SNR για {event_name}/{station_name}/{ch_id}: {e}")
+                        continue
+
+                    # Εύρεση τέλους: πότε πέφτει κάτω από το noise level
+                    end_idx = None
+                    for i in range(pick_idx + 1, len(data)):
+                        if abs(data[i]) <= last_max:
+                            end_idx = i
+                            break
+                    if end_idx is None:
+                        print(f"⚠️ Δεν βρέθηκε τέλος για {tr.id}")
+                        continue
+
+                    end_time = tr.stats.starttime + end_idx / sr
+
+                    insert_result(db, event_name, station_name, ch_id, {
+                        "start_sample": int(aic_idx),
+                        "start_time": str(start_time),
+                        "pick_sample": int(pick_idx),
+                        "pick_time": str(pick_time),
+                        "pick_amplitude": pick_ampl,
+                        "end_sample": int(end_idx),
+                        "end_time": str(end_time),
+                        "aic_min_value": aic_min
+                    })
+
                     save_json(OUTPUT_JSON, db)
-
-                    print(f"✅ {event_name}/{station_name}/{tr.id}: start @ {t0} (sample {idx})")
+                    print(f"✅ {event_name}/{station_name}/{tr.id}: {str(start_time)} → {str(end_time)}")
 
                 except Exception as e:
-                    print(f"⚠️ AIC σφάλμα στο {event_name}/{station_name}/{tr.id}: {e}")
-                    continue
+                    print(f"⚠️ Σφάλμα στο {event_name}/{station_name}/{tr.id}: {e}")
 
-    print(f"\n💾 Όλα τα αποτελέσματα έχουν αποθηκευτεί προοδευτικά στο: {OUTPUT_JSON}")
+    print(f"\n💾 Τα αποτελέσματα αποθηκεύτηκαν στο: {OUTPUT_JSON}")
 
-# ---------------------------------------------------------
-# Εκτέλεση
-# ---------------------------------------------------------
+
 if __name__ == "__main__":
-    find_event_start()
+    find_start_end_and_peak_of_signal()
