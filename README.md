@@ -87,5 +87,6 @@ The final step of the preprocessing pipeline is Z-score normalization.At this st
 and we produce the final normalized output: *_demean_detrend_IC_filtered_PS_Lqt_zscore.mseed. This normalized signal is the final version used for visual inspection before being fed into the GreensonNet neural network.
  
 ## The final folder tree
-After pre-processing the folder of each chanel should be the following 
+After pre-processing the folder of each chanel should be like the following 
+
 ![img.png](images/img2.png)
