@@ -12,7 +12,7 @@ from instrument_correction import instrument_correction
 from overlaps import find_files_for_overlaps
 from peak_segmentation import  find_start_end_and_peak_of_signal
 from snr import find_snr
-from stationsWith3Channels import find_stations_with_nofChannelsL3, delete_stations_with_nofChannels_l3
+from useOnlyStationsWith3Channels import find_stations_with_nofChannelsL3, delete_stations_with_nofChannels_l3
 
 # === ΡΥΘΜΙΣΕΙΣ ===
 BASE_DIR = "/media/iarv/Samsung/Events"  # 👉 άλλαξέ το αν χρειάζεται
@@ -64,10 +64,18 @@ def main():
     #filter_all_files()()
 
     # print("🔍 Βρίσκει το pick segmentation...")
-    #find_start_end_and_peak_of_signal()
+    #find_peak_segmentation()
 
     # print("🔍 Κρατάει μόνο το pick segmentation...")
     #store_peak_segmentation()
+
+    # print("🔍 Conversion to LQT")
+    #convert_to_LQT()
+
+    # print("🔍 Normalize Z score all files...")
+    #normalize_Z_score()
+
+
 
 
 

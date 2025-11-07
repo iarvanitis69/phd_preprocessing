@@ -144,8 +144,6 @@ def find_max_and_min_freq():
                 full_path = os.path.join(root, fname)
                 process_file(full_path, BASE_DIR, LOG_DIR)
 
-    plot_cutoff_distributions()
-
 def plot_cutoff_distributions():
     from main import LOG_DIR
     json_path = os.path.join(LOG_DIR, "fourier.json")
@@ -197,4 +195,5 @@ def plot_cutoff_distributions():
 
 # ==========================================================
 if __name__ == "__main__":
-    find_max_and_min_freq()
+    #find_max_and_min_freq()
+    plot_cutoff_distributions()
