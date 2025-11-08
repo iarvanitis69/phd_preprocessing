@@ -38,25 +38,42 @@ def find_gaps_in_file(file_path):
         print(f"⚠️ Σφάλμα στο αρχείο {file_path}: {e}")
         return []
 
+import os
+import json
+
 def update_excluded_stations(event_name, station_name, logs_dir):
-    """Προσθέτει τον σταθμό στο excluded_stations.json με λόγο gaps, εφόσον δεν υπάρχει ήδη."""
+    """Προσθέτει τον σταθμό στο excluded_stations.json με λόγο gaps, εφόσον δεν υπάρχει ήδη.
+    Επίσης αυξάνει το COUNT στο root επίπεδο.
+    """
     excluded_path = os.path.join(logs_dir, "excluded_stations.json")
+
+    # Φόρτωση υπάρχοντος αρχείου ή δημιουργία νέου
     if os.path.exists(excluded_path):
         with open(excluded_path, "r", encoding="utf-8") as f:
             data = json.load(f)
     else:
         data = {}
 
+    # Αν δεν υπάρχει COUNT, ξεκίνα από 0
+    if "COUNT" not in data:
+        data["COUNT"] = 0
+
+    # Αν το event δεν υπάρχει, δημιουργείται
     if event_name not in data:
         data[event_name] = {}
 
+    # Αν ο σταθμός δεν έχει ήδη προστεθεί → προσθήκη και αύξηση COUNT
     if station_name not in data[event_name]:
         data[event_name][station_name] = {
             "reason": "Gaps found"
         }
 
+        data["COUNT"] += 1
+
+        # Αποθήκευση
         with open(excluded_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+
         print(f"⚠️ Εξαιρέθηκε ο σταθμός {station_name} από το συμβάν {event_name} λόγω gaps.")
 
 def load_excluded_stations(logs_dir):

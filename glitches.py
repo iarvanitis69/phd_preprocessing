@@ -4,6 +4,11 @@ import numpy as np
 from obspy import read, Trace
 import shutil
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from multiprocessing import Manager
+
+# Global lock for safe JSON writing
+manager = Manager()
+json_write_lock = manager.Lock()
 
 def extract_event_info(event_folder_name: str):
     try:
@@ -85,7 +90,7 @@ def find_files_for_glitches_parallel(threshold: float = 1.0, max_workers: int = 
         for f in as_completed(futures):
             print(f.result())
 
-    print("💾 Όλα τα glitches έχουν ήδη γραφτεί στο Logs/glitches.json.")
+    print("📂 Όλα τα glitches έχουν ήδη γραφεί στο Logs/glitches.json.")
 
 def process_single_event(event_path: str, threshold: float):
     from main import BASE_DIR
@@ -129,32 +134,12 @@ def process_single_event(event_path: str, threshold: float):
                         channel=tr.stats.channel,
                         glitches=glitches
                     )
-                    print(f"📌 {event_name} | {tr.id} | {len(glitches)} glitches")
+                    print(f"📌 Glitch log → Event: {event_name} | Trace ID: {tr.id} | Glitches found: {len(glitches)}")
 
             if total_glitches > 0:
                 update_excluded_stations(event_name, net_station, "Glitches", logs_dir)
 
     return f"✅ Ολοκληρώθηκε: {event_name}"
-
-def process_mseed_file(mseed_path: str, event_name: str, threshold: float):
-    try:
-        st = read(mseed_path)
-    except Exception as e:
-        print(f"❌ Αποτυχία ανάγνωσης {mseed_path}: {e}")
-        return
-
-    for tr in st:
-        glitches = find_glitches(tr, threshold=threshold)
-        if glitches:
-            for g in glitches:
-                g["file"] = os.path.basename(mseed_path)
-            append_to_json_file(
-                event_name=event_name,
-                station=tr.stats.station,
-                channel=tr.stats.channel,
-                glitches=glitches
-            )
-            print(f"📌 {event_name} | {tr.id} | {len(glitches)} glitches")
 
 def append_to_json_file(event_name, station, channel, glitches):
     from main import BASE_DIR
@@ -162,9 +147,7 @@ def append_to_json_file(event_name, station, channel, glitches):
     os.makedirs(logs_path, exist_ok=True)
     output_file = os.path.join(logs_path, "glitches.json")
 
-    import multiprocessing
-    lock = multiprocessing.Manager().Lock()
-    with lock:
+    with json_write_lock:
         if os.path.exists(output_file):
             with open(output_file, "r", encoding="utf-8") as f:
                try:
@@ -195,14 +178,20 @@ def load_excluded_stations(logs_dir: str):
     if os.path.exists(excluded_path):
         with open(excluded_path, "r", encoding="utf-8") as f:
             try:
-                return json.load(f)
+                data = json.load(f)
+                if "COUNT" not in data:
+                    data["COUNT"] = 0
+                return data
             except json.JSONDecodeError:
-                return {}
-    return {}
+                return {"COUNT": 0}
+    return {"COUNT": 0}
 
 def update_excluded_stations(event_name: str, net_station: str, reason: str, logs_dir: str):
     excluded_path = os.path.join(logs_dir, "excluded_stations.json")
     excluded = load_excluded_stations(logs_dir)
+
+    if "COUNT" not in excluded:
+        excluded["COUNT"] = 0
 
     if event_name not in excluded:
         excluded[event_name] = {}
