@@ -62,24 +62,9 @@ def load_json(path: str) -> dict:
     return {}
 
 def save_json(path: str, data: dict):
-    """
-    Αποθηκεύει το JSON αρχείο με το COUNT_OF_STATIONS πρώτο,
-    και μετά το Events, χωρίς να αλλάζει τίποτα άλλο στη δομή.
-    """
-    # Δημιουργία νέου Ordered dictionary με σωστή σειρά
-    ordered = {}
-    if "COUNT_OF_STATIONS" in data:
-        ordered["COUNT_OF_STATIONS"] = data["COUNT_OF_STATIONS"]
-    if "Events" in data:
-        ordered["Events"] = data["Events"]
-
-    # Αν υπάρχουν και άλλα πεδία (π.χ. metadata), τα κρατάμε
-    for k, v in data.items():
-        if k not in ordered:
-            ordered[k] = v
-
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(ordered, f, indent=2, ensure_ascii=False)
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
 
 
 def insert_record(db: dict, year: str, event_name: str, station: str, channel: str,
@@ -204,10 +189,11 @@ def find_snr():
     snr_file = os.path.join(LOG_DIR, "snr.json")
     snr_db = load_json(snr_file)
 
-    if "Events" not in snr_db:
-        snr_db["Events"] = {}
     if "COUNT_OF_STATIONS" not in snr_db:
         snr_db["COUNT_OF_STATIONS"] = 0
+    if "Events" not in snr_db:
+        snr_db["Events"] = {}
+
 
     for station_dir in iter_station_dirs(BASE_DIR):
         process_station(station_dir, snr_db, excluded)
