@@ -2,6 +2,8 @@ import os
 import json
 import numpy as np
 from obspy import read, Trace
+import tempfile
+import shutil
 
 PRESET_SEC = 30
 END_SEC = 30
@@ -61,7 +63,11 @@ def load_json(path: str) -> dict:
             return {}
     return {}
 
-def save_json(path: str, data: dict):
+def save_json_atomic(path: str, data: dict):
+    if "Events" not in data or not isinstance(data["Events"], dict):
+        print(f"⚠️ Παράλειψη αποθήκευσης: λείπει ή είναι άκυρο το 'Events' στο snr_db.")
+        return
+
     ordered = {}
     if "COUNT_OF_STATIONS" in data:
         ordered["COUNT_OF_STATIONS"] = data["COUNT_OF_STATIONS"]
@@ -70,8 +76,16 @@ def save_json(path: str, data: dict):
     for k, v in data.items():
         if k not in ordered:
             ordered[k] = v
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(ordered, f, indent=2, ensure_ascii=False)
+
+    try:
+        temp_path = path + ".tmp"
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(ordered, f, indent=2, ensure_ascii=False)
+        shutil.move(temp_path, path)
+        print(f"💾 Αποθηκεύτηκε επιτυχώς το snr.json ({path})")
+    except Exception as e:
+        print(f"❌ Σφάλμα κατά την αποθήκευση του {path}: {e}")
+
 
 def insert_record(db: dict, year: str, event_name: str, station: str, channel: str,
                   edge_max: float, middle_max: float, snr: float,
@@ -177,7 +191,8 @@ def find_snr():
         for event_name, event_path in iter_event_dirs(year_path):
             for station_name, station_path in iter_station_dirs(event_path):
                 process_station(station_path, year, event_name, station_name, snr_db, excluded)
-                save_json(snr_file, snr_db)
+                #save_json(snr_file, snr_db)
+                save_json_atomic(snr_file, snr_db)
 
 if __name__ == "__main__":
     find_snr()
