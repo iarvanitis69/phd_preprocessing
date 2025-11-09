@@ -6,9 +6,7 @@
 Επεξεργάζεται δομή φακέλων:
   /media/iarv/Samsung/Events/<Year>/<Event>/<Station>/
 
-✅ Αν υπάρχουν ήδη όλα τα *_demean_detrend_IC.mseed αρχεία σε ένα σταθμό,
-   ο σταθμός παραλείπεται (resume-friendly).
-✅ Αν υπάρχουν μερικά, συνεχίζει μόνο για τα υπόλοιπα.
+✅ Αν υπάρχουν ήδη τα *_demean_detrend_IC.mseed αρχεία, παραλείπονται.
 ✅ Αντιμετωπίζει λάθος dtype / encoding, διορθώνει XMLs με NotEnumeratedValue.
 ✅ Γράφει FLOAT32 (encoding=3).
 ✅ Παραλείπει excluded σταθμούς (από excluded_stations.json).
@@ -60,7 +58,6 @@ def write_error(year, event, station, channel, message):
 
 
 def validate_and_fix_inventory(inv, xml_path=None):
-    """Διορθώνει NotEnumeratedValue σε COUNTS/M/S αν βρεθούν."""
     modified = False
     for net in inv:
         for sta in net:
@@ -88,7 +85,6 @@ def validate_and_fix_inventory(inv, xml_path=None):
 
 
 def ensure_int32_encoding(input_path):
-    """Αν χρειάζεται, μετατρέπει σε Steim2 INT32 και διαβάζει το αρχείο."""
     try:
         return read(input_path)
     except Exception as e:
@@ -103,11 +99,10 @@ def ensure_int32_encoding(input_path):
         raise
 
 
-def station_is_complete(station_dir):
-    """Ελέγχει αν υπάρχουν 3 ή περισσότερα _IC.mseed αρχεία."""
-    files = os.listdir(station_dir)
-    count = sum(f.endswith("_demeanDetrend_IC.mseed") for f in files)
-    return count >= 3
+def is_instrument_corrected(station_dir, original_file):
+    output_file = original_file.replace("_demeanDetrend.mseed", "_demeanDetrend_IC.mseed")
+    output_path = os.path.join(station_dir, output_file)
+    return os.path.exists(output_path)
 
 
 def process_station_dir(station_dir, year, event, excluded):
@@ -115,10 +110,6 @@ def process_station_dir(station_dir, year, event, excluded):
 
     if is_station_excluded(event, station, excluded):
         write_error(year, event, station, "-", "Παράλειψη excluded σταθμού")
-        return
-
-    if station_is_complete(station_dir):
-        print(f"⏩ Ο σταθμός {station} είναι ήδη πλήρης, παράκαμψη.")
         return
 
     mseed_list = sorted(f for f in os.listdir(station_dir) if f.endswith("_demeanDetrend.mseed"))
@@ -129,11 +120,12 @@ def process_station_dir(station_dir, year, event, excluded):
 
     for file in mseed_list:
         input_path = os.path.join(station_dir, file)
-        output_path = input_path.replace("_demeanDetrend.mseed", "_demeanDetrend_IC.mseed")
 
-        if os.path.exists(output_path):
-            print(f"⏩ Παράκαμψη (υπάρχει): {output_path}")
+        if is_instrument_corrected(station_dir, file):
+            print(f"⏩ Παράκαμψη (υπάρχει): {station}/{file}")
             continue
+
+        output_path = input_path.replace("_demeanDetrend.mseed", "_demeanDetrend_IC.mseed")
 
         try:
             st = ensure_int32_encoding(input_path)
@@ -170,7 +162,6 @@ def process_station_dir(station_dir, year, event, excluded):
 
 
 def instrument_correction():
-    """Εκτελεί instrument correction για κάθε σταθμό σε κάθε event."""
     from main import BASE_DIR
     excluded = load_excluded_stations()
 

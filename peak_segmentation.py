@@ -80,7 +80,6 @@ def extract_segment_from_mseed_file(input_path: str, start_index: int, duration_
 # ==========================================================
 def find_start_end_and_peak_of_signal():
     from main import LOG_DIR, BASE_DIR
-    from utils import aic_picker
 
     OUTPUT_JSON = os.path.join(LOG_DIR, "event_boundaries.json")
     os.makedirs(LOG_DIR, exist_ok=True)  # Ensure Logs/ exists
@@ -200,6 +199,32 @@ def create_peak_segmentation_files():
                 if output_path:
                     print(f"✅ Δημιουργήθηκε: {output_path}")
 
+def aic_picker(trace_data):
+    """
+    Υπολογίζει το AIC σε ολόκληρο το σήμα (μέχρι το pick) και επιστρέφει
+    το index όπου ελαχιστοποιείται, ως πιθανή έναρξη του σεισμικού κύματος.
+
+    :param trace_data: numpy array με το σεισμικό σήμα (float, demeaned)
+    :return: (index_έναρξης, καμπύλη_AIC)
+    """
+    data = trace_data.astype(float)
+    n = len(data)
+    if n < 3:
+        return None, np.array([])
+
+    pick_idx = int(np.argmax(np.abs(data)))  # μέγιστη απόλυτη τιμή
+    if pick_idx < 10:
+        return None, np.array([])  # πολύ μικρό σήμα
+
+    aic = np.zeros(pick_idx)
+
+    for k in range(1, pick_idx - 1):
+        var1 = np.var(data[:k]) or 1e-10
+        var2 = np.var(data[k:pick_idx]) or 1e-10
+        aic[k] = k * np.log(var1) + (pick_idx - k - 1) * np.log(var2)
+
+    min_idx = int(np.argmin(aic[1:pick_idx - 1])) + 1
+    return min_idx, aic
 
 # ==========================================================
 if __name__ == "__main__":

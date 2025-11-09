@@ -1,57 +1,62 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import json
 import numpy as np
 import matplotlib.pyplot as plt
 from obspy import read
 from scipy.signal import welch
+from collections import Counter
 
-def extract_event_info(event_folder_name: str):
-    try:
-        parts = event_folder_name.split("_")
-        origin_time = parts[0]
-        lat = parts[1]
-        lon = parts[2]
-        depth = parts[3].replace("km", "")
-        mag = parts[4].replace("M", "")
-        return {
-            "event_folder": event_folder_name,
-            "origin_time": origin_time,
-            "latitude": float(lat),
-            "longitude": float(lon),
-            "depth_km": float(depth),
-            "magnitude": float(mag)
-        }
-    except Exception:
-        return {
-            "event_folder": event_folder_name,
-            "origin_time": None,
-            "latitude": None,
-            "longitude": None,
-            "depth_km": None,
-            "magnitude": None
-        }
+def load_excluded_stations(log_dir):
+    path = os.path.join(log_dir, "excluded_stations.json")
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
 
-def process_file(filepath, base_dir, log_dir):
+def is_excluded(excluded: dict, event: str, station: str) -> bool:
+    return event in excluded and station in excluded[event]
+
+def extract_event_folder(path: str, base_dir: str) -> str:
+    rel = os.path.relpath(path, base_dir)
+    parts = rel.split(os.sep)
+    for p in parts:
+        if "T" in p and "_" in p:
+            return p
+    return None
+
+def process_file(filepath, base_dir, log_dir, excluded):
     try:
         stream = read(filepath)
         trace = stream[0]
         data = trace.data
         fs = trace.stats.sampling_rate
 
+        event = extract_event_folder(filepath, base_dir)
+        if not event:
+            print(f"⚠️ Δεν βρέθηκε event για το {filepath}")
+            return
+
+        station = trace.stats.station
+        network = trace.stats.network
+        net_sta = f"{network}.{station}"
+
+        if is_excluded(excluded, event, net_sta):
+            print(f"⛔ Παράλειψη excluded σταθμού: {event}/{net_sta}")
+            return
+
         # --- Welch PSD ---
         freqs_welch, power_welch = welch(data, fs=fs, nperseg=1024)
         cumulative_energy = np.cumsum(power_welch)
         total_energy = cumulative_energy[-1]
 
-        # --- Cutoff συχνότητες ---
         cutoff_index_95 = np.searchsorted(cumulative_energy, 0.95 * total_energy)
         cutoff_index_05 = np.searchsorted(cumulative_energy, 0.05 * total_energy)
 
-        cutoff_freq_95 = freqs_welch[min(cutoff_index_95, len(freqs_welch) - 1)]
-        cutoff_freq_05 = freqs_welch[min(cutoff_index_05, len(freqs_welch) - 1)]
+        cutoff_freq_95 = freqs_welch[min(cutoff_index_95, len(freqs_welch)-1)]
+        cutoff_freq_05 = freqs_welch[min(cutoff_index_05, len(freqs_welch)-1)]
         max_energy_freq = freqs_welch[np.argmax(power_welch)]
 
         # --- FFT για γράφημα ---
@@ -59,14 +64,13 @@ def process_file(filepath, base_dir, log_dir):
         freqs = np.fft.rfftfreq(len(data), d=1/fs)
         power = np.abs(fft) ** 2
 
-        # --- Γράφημα ---
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
         ax1.plot(freqs, power, color='blue', label='FFT Power Spectrum')
         ax1.axvline(max_energy_freq, color='r', linestyle='--', label=f'Max PSD Energy: {max_energy_freq:.2f} Hz')
         ax1.axvline(cutoff_freq_05, color='purple', linestyle='--', label=f'5% Cutoff: {cutoff_freq_05:.2f} Hz')
         ax1.axvline(cutoff_freq_95, color='g', linestyle='--', label=f'95% Cutoff: {cutoff_freq_95:.2f} Hz')
         ax1.set_ylabel('Power (FFT)')
-        ax1.set_title(f"FFT: {trace.stats.station}.{trace.stats.channel}")
+        ax1.set_title(f"FFT: {net_sta}.{trace.stats.channel}")
         ax1.legend()
 
         ax2.plot(freqs_welch, power_welch, color='orange', label='PSD (Welch)')
@@ -86,21 +90,6 @@ def process_file(filepath, base_dir, log_dir):
 
         # --- Ενημέρωση JSON ---
         json_path = os.path.join(log_dir, "fourier.json")
-        rel_path = os.path.relpath(filepath, base_dir)
-        parts = rel_path.split(os.sep)
-
-        # Βρες φάκελο event με "_"
-        event = next((p for p in parts if "_" in p and "T" in p), None)
-        if not event:
-            print(f"⚠️ Δεν βρέθηκε φάκελος event για το αρχείο: {filepath}")
-            return
-
-        station = trace.stats.station
-        network = trace.stats.network
-        net_sta = f"{network}.{station}"
-        channel = trace.stats.channel
-
-        # Ανάγνωση υπάρχοντος JSON
         if os.path.exists(json_path):
             with open(json_path, "r") as f:
                 try:
@@ -111,15 +100,12 @@ def process_file(filepath, base_dir, log_dir):
             data_json = {}
 
         data_json.setdefault(event, {})
-
-        # Καταχώριση καναλιού
-        data_json[event].setdefault(net_sta, {})[channel] = {
+        data_json[event].setdefault(net_sta, {})[trace.stats.channel] = {
             "max_energy_freq": round(float(max_energy_freq), 3),
             "cutoff_freq_95_percent": round(float(cutoff_freq_95), 3),
             "cutoff_freq_5_percent": round(float(cutoff_freq_05), 3)
         }
 
-        # Ενημέρωση global min/max
         prev_max = data_json.get("maxUpperCutoffFreq", 0)
         prev_min = data_json.get("minLowerCutoffFreq", float("inf"))
 
@@ -133,67 +119,14 @@ def process_file(filepath, base_dir, log_dir):
         print(f"❌ Σφάλμα στο αρχείο {filepath}: {e}")
 
 def find_max_and_min_freq():
-    from main import LOG_DIR
-    json_path = os.path.join(LOG_DIR, "fourier.json")
-    os.makedirs(LOG_DIR, exist_ok=True)
+    from main import BASE_DIR, LOG_DIR
+    excluded = load_excluded_stations(LOG_DIR)
 
-    from main import BASE_DIR
     for root, _, files in os.walk(BASE_DIR):
         for fname in files:
             if fname.endswith("_demean_detrend_IC.mseed"):
                 full_path = os.path.join(root, fname)
-                process_file(full_path, BASE_DIR, LOG_DIR)
+                process_file(full_path, BASE_DIR, LOG_DIR, excluded)
 
-def plot_cutoff_distributions():
-    from main import LOG_DIR
-    json_path = os.path.join(LOG_DIR, "fourier.json")
-    if not os.path.exists(json_path):
-        print(f"❌ Το αρχείο {json_path} δεν βρέθηκε.")
-        return
-
-    with open(json_path, "r") as f:
-        data = json.load(f)
-
-    cutoff_95_all = []
-    cutoff_5_all = []
-
-    for key, event_data in data.items():
-        if key in ["maxUpperCutoffFreq", "minLowerCutoffFreq"]:
-            continue
-        for station, station_data in event_data.items():
-            for channel, values in station_data.items():
-                try:
-                    cutoff_95_all.append(values["cutoff_freq_95_percent"])
-                    cutoff_5_all.append(values["cutoff_freq_5_percent"])
-                except Exception:
-                    continue
-
-    # --- Ομαδοποίηση ανά 5 Hz ---
-    def group_by_bin(values, bin_width=5):
-        binned = [bin_width * int(v // bin_width) for v in values]
-        return Counter(binned)
-
-    bins_95 = group_by_bin(cutoff_95_all)
-    bins_5 = group_by_bin(cutoff_5_all)
-
-    def plot_histogram(bins, title, color):
-        bin_edges = sorted(bins.keys())
-        counts = [bins[b] for b in bin_edges]
-        labels = [f"{b}-{b+5}" for b in bin_edges]
-
-        plt.figure(figsize=(10, 6))
-        plt.bar(labels, counts, width=0.6, color=color)
-        plt.title(title)
-        plt.xlabel("Συχνότητα (Hz)")
-        plt.ylabel("Πλήθος καναλιών")
-        plt.grid(axis='y', linestyle='--', alpha=0.6)
-        plt.tight_layout()
-        plt.show()
-
-    plot_histogram(bins_95, "Κατανομή cutoff_freq_95_percent ανά 5 Hz", color="green")
-    plot_histogram(bins_5, "Κατανομή cutoff_freq_5_percent ανά 5 Hz", color="purple")
-
-# ==========================================================
 if __name__ == "__main__":
-    #find_max_and_min_freq()
-    plot_cutoff_distributions()
+    find_max_and_min_freq()

@@ -2,7 +2,7 @@
 
 ## Complete Activity Diagram
 
-<img src="images/img.png" alt="img" width="400"/>
+<img src="images/completeActivityDiagram.png" alt="img" width="400"/>
 
 ## Pre-Processing
 <img src="images/img1.png" alt="img_1" width="400"/>
@@ -38,55 +38,306 @@ python main.py
 ```
 
 ## Pre-processing tasks
-The preprocessing pipeline consists of a series of distinct procedures, each designed to transform and enhance the raw seismic waveform data. The primary goal of this stage is to produce the cleanest and most representative signal possible, ensuring that the resulting waveform is optimally prepared for input into the neural network model known as GreensonNet.
+The preprocessing pipeline consists of a series of distinct procedures, each designed to transform and enhance the raw 
+seismic waveform data. The primary goal of this stage is to produce the cleanest and most representative signal possible, 
+ensuring that the resulting waveform is optimally prepared for input into the neural network model known as GreensonNet.
 
-### useOnlyStationsWith3Channels.py
-The first step in the preprocessing pipeline is the execution of the function "Use Only Stations with Three Channels". This function iterates through the entire directory of all seismic events, checking each station within every event to verify whether it contains all three seismic components (typically HHE, HHN, and HHZ). If a station is found to have fewer than three channels — that is, only one or two — it is removed from the event. If, after this filtering, an event is left with no remaining valid stations, the entire event directory is deleted.
+### missingFiles.py
+In the file missingfiles.py, we use the function find_stations_with_issues().
+This function identifies:
+Stations that have fewer than three channels, and Stations that are missing the StationXML file, which contains the 
+metadata describing the station.
+If either of these issues is detected, the event and station details are: Logged into the file missingfiles.json, and 
+Added to the excluded-others-for-stations.json file for exclusion from further processing.
 
+The structure of the file excluded_stations.json includes the key COUNT, which indicates the total number of excluded 
+stations. Additionally, for each excluded station, the corresponding event is listed as a key, and directly under it, 
+the specific station(s) that have been excluded from that event are recorded.
+
+```excluded_statios.json
+{
+  "COUNT": 15,
+  "20110408T235106_36.63_25.66_10.0km_M3.4": {
+    "HT.CMBO": {
+      "reason": "channels lower than 3"
+    }
+  },
+  "20111212T225036_36.41_25.42_5.7km_M3.0": {
+    "HT.CMBO": {
+      "reason": "channels lower than 3"
+    }
+  },
+  ...
+}
+```
+The structure of missingfiles.json is similar. Specifically, it contains the event, the station that has the issue, 
+and the reason for the problem. The reason can be either “channels lower than 3” or “missing StationXML file.”
+
+``` missing_files.json
+{
+  "20110408T235106_36.63_25.66_10.0km_M3.4": {
+    "HT.CMBO": {
+      "reason": "channels lower than 3"
+    }
+  },
+  "20111212T225036_36.41_25.42_5.7km_M3.0": {
+    "HT.CMBO": {
+      "reason": "channels lower than 3"
+    }
+  },
+  ...
+}
+```
+  
 ### gaps.py
-The second step in the preprocessing sequence involves detecting data gaps. This is handled by the script gaps.py, specifically by the function named find_files_for_gaps(). This function scans all downloaded waveform files to identify any that contain missing data segments (gaps). During our analysis, we observed that none of the downloaded files contained any data gaps, indicating high integrity in the acquired waveforms.
+The logic for detecting GAPs and Overlaps is exactly the same. If any GAPs or Overlaps are found, they are recorded in 
+the respective files: gaps.json and overlaps.json, and the corresponding stations are also marked as excluded.
+However, in practice, no files were found to contain any GAPs or Overlaps, so nothing was added to the excluded files, 
+and both gaps.json and overlaps.json remain empty.
 
 ### overlaps.py
-The next step in the preprocessing pipeline is the removal of overlapping waveform segments. Fortunately, no overlaps were found in the downloaded signals. As a result, all waveform files were retained and used in full, with no data being discarded at this stage.
+See above. No files were found to contain any GAPs or Overlaps, so nothing was added to the excluded files, 
+and both gaps.json and overlaps.json remain empty.
 
 ### glitches.py
-The function FindGlitches scans all waveform files for the presence of glitches. A small number of glitches were detected — specifically, five seismic traces in total. The corresponding stations containing these traces were removed from the dataset to ensure data quality.
+The file glitches.py calls the function find_glitches, which scans for glitches across all channels, stations, and events.
+If a glitch is detected, it is recorded in the file glitches.json, and the corresponding station is also marked as 
+excluded, using the same logic applied in previous cases (e.g., missingfiles.json, excluded-others-for-stations.json).
+Although in principle minor glitches could be handled via interpolation, in this case we had a large number of signals 
+and the glitches appeared in only a few cases — specifically, only 8 channels.
+Therefore, to simplify the process, we completely ignore those signals: they are excluded via excluded__stations.json, 
+and not used at all in any further processing or analysis.
+
+The structure of the glitches.json file is organized as follows:
+At the top level, it contains the event name.Under each event, it lists the corresponding network and station.
+Beneath that, it includes each affected channel.For every channel, it reports:
+The number of glitches detected in the corresponding .mseed file (post_count).
+An array of glitch entries, where each glitch entry contains:
+
+```
+1) start_index and end_index: the index range where the glitch occurs.
+2) channel: the affected channel name (repeated for clarity).
+3) station and network: inherited from the parent structure but also repeated in each glitch entry.
+4) start_time and end_time: the time interval of the glitch.
+5) peak_rise: the steep upward jump between two consecutive samples.
+6) peak_fall: the steep drop in the two samples that follow.
+7) filename: the name of the .mseed file that was analyzed.
+```
+
+The peak_rise and peak_fall values represent how abrupt the change is between consecutive samples — the rise between 
+sample 1 and 2, and the fall between sample 3 and 4. A glitch is identified when these differences exceed a certain 
+threshold (typically greater than or equal to 1 in magnitude).
+
+``` glitches.json
+{
+  "20250204T134403_36.65_25.60_14.4km_M3.3": {
+    "HL.AMGA": {
+      "HHZ": {
+        "count": 1,
+        "glitches": [
+          {
+            "start_index": 612,
+            "end_index": 616,
+            "channel": "HHZ",
+            "station": "AMGA",
+            "network": "HL",
+            "start_time": "2025-02-04T13:43:33.630000Z",
+            "end_time": "2025-02-04T13:43:33.670000Z",
+            "peak_rise": 1.6,
+            "peak_fall": -1.3283,
+            "file": "HL.AMGA..HHZ__20250204T134333Z__20250204T134703Z.mseed"
+          }
+        ]
+      }
+    }
+  },
+  "20250213T165000_36.69_25.67_1.0km_M3.1": {
+    "HT.AKRO": {
+      "HHN": {
+        "count": 1,
+        "glitches": [
+          {
+            "start_index": 8465,
+            "end_index": 8469,
+            "channel": "HHN",
+            "station": "AKRO",
+            "network": "HT",
+            "start_time": "2025-02-13T16:50:53.480000Z",
+            "end_time": "2025-02-13T16:50:53.520000Z",
+            "peak_rise": 1.3106,
+            "peak_fall": -1.3411,
+            "file": "HT.AKRO..HHN__20250213T164930Z__20250213T165300Z.mseed"
+          }
+        ]
+      }
+    }
+  },
+  ...
+}
+```  
 
 ### demean_detrend.py
-The next step involves applying demeaning and detrending to all seismic signals. This preprocessing was performed on each waveform, resulting in the creation of new MiniSEED files with the filename extension _demean_detrend.mseed, indicating that both the mean and linear trend were removed from the original data.
+The next step involves applying demeaning and detrending to all seismic signals. This preprocessing was performed on 
+each waveform, resulting in the creation of new MiniSEED files with the filename extension _demeanDetrend.mseed, 
+indicating that both the mean and linear trend were removed from the original data.
 
-### Instrument correction
-The following step is instrument correction, which removes the instrument’s response imperfections from each waveform. This process was applied to all signals. Starting from the previously preprocessed files named _demean_detrend.mseed, a new set of files was generated with the suffix _demean_detrend_IC.mseed, where ic stands for Instrument Correction.
+#### Downloaded Signal
+![img.png](images/originalSignal.png)
+
+#### Demean/Detrend signal
+![img.png](images/demeanDetrendSignal.png)
+
+### instrument_correction.py
+The following step is instrument correction, which removes the instrument’s response imperfections from each waveform. 
+This process was applied to all signals. Starting from the previously preprocessed files named _demean_detrend.mseed, 
+a new set of files was generated with the suffix _demean_detrend_IC.mseed, where ic stands for Instrument Correction.
+
+#### Instrument correction Signal
+![img.png](images/instrumentCorrectionSignal.png)
 
 ### snr.py
-Next, all seismic waveforms with a signal-to-noise ratio (SNR) less than 5 are removed. Importantly, if even one channel from a station is discarded, the entire station is removed as well. Furthermore, if no stations remain for a given event after this filtering step, the entire event folder is also deleted. This ensures that only high-quality, noise-free seismic data is retained for further processing.
+
+The fumction findSnr() creates the file snr.json. This file stores the Signal-to-Noise Ratio (SNR) values for each 
+seismic event, each station, and each channel.
+
+#### How SNR is calculated
+
+The SNR is computed using three time windows from the waveform:
+Edge Start Window: The first 30 seconds of the signal (PRESET_SEC), before the seismic wave arrives.
+Middle Window: The central portion of the signal that contains the actual seismic wave.
+Edge End Window: The final 30 seconds (END_SEC) of the signal, after the main event.
+For each channel, the following values are extracted:
+
+ - edge_max: The maximum absolute amplitude in the edge windows (start + end).
+ - middle_max: The maximum absolute amplitude in the middle window (the event).
+ - snr: The ratio middle_max / edge_max, representing the signal-to-noise level of the channel.
+
+For each station, the field:
+ - minimum_snr: is computed as the minimum SNR value among the three main channels: HHE, HHN, and HHZ, only if all 
+   three exist.
+
+This file contains the Signal-to-Noise Ratio (SNR) values computed for every event, station, and channel, using 
+well-defined signal segments.
+
+Keys in the JSON file
+    - COUNT_OF_STATIONS An integer that represents the total number of unique stations for which the SNR was 
+                        successfully calculated.
+
+    - Events A nested structure organized as: Events → Year → Event Name → Station → Channel
+
+### SNR Calculation Logic
+
+Each waveform is divided into three time windows:
+Start Window (edge_start) – the first 30 seconds of the waveform.
+Middle Window (middle) – the part of the waveform that contains the actual seismic signal.
+End Window (edge_end) – the last 30 seconds of the waveform.
+
+For each channel, we compute:
+
+ - first_max: Maximum absolute amplitude in the start window
+ - last_max: Maximum absolute amplitude in the end window
+ - middle_max: Maximum absolute amplitude in the middle window
+ - edge_max: The larger of first_max and last_max
+ - snr: Calculated as: snr = middle_max / max(first_max, last_max)
+
+##### Station-Level SNR (minimum_snr)
+
+Once SNR values have been computed for all three channels (HHE, HHN, HHZ) of a station:
+The field minimum_snr is added to the station entry.
+It represents the minimum SNR across the three channels:
+minimum_snr = min(snr_HHE, snr_HHN, snr_HHZ)
+
+This field provides a conservative estimate of the station’s signal quality.
+``` snr.json
+{
+  "COUNT_OF_STATIONS": 17000,
+  "Events": {
+    "2010": {
+      "20100507T041515_36.68_25.71_15.0km_M3.4": {
+        "HL.APE": {
+          "HHE": {
+            "edge_max": 8.758102922001854e-05,
+            "middle_max": 0.0015626093372702599,
+            "first_max": 1.7794573068385944e-05,
+            "last_max": 8.758102922001854e-05,
+            "snr": 17.84186979012142,
+            "total_duration": 215.18
+          },
+          "HHN": {
+            "edge_max": 0.00017686319188214839,
+            "middle_max": 0.0015632888535037637,
+            "first_max": 1.9251423509558663e-05,
+            "last_max": 0.00017686319188214839,
+            "snr": 8.83897224758037,
+            "total_duration": 213.59
+          },
+          "HHZ": {
+            "edge_max": 0.00010352303070249036,
+            "middle_max": 0.0016127951676025987,
+            "first_max": 3.356333036208525e-05,
+            "last_max": 0.00010352303070249036,
+            "snr": 15.579095212720679,
+            "total_duration": 215.26
+          },
+          "minimum_snr": 8.83897224758037
+        },
+        ...
+      }  
+  }
+}
+```
 
 ### fourier_transformation.py
-At this stage, using the Find, Meet, and Max Frequency function, we compute the Power Spectral Density (PSD) of each seismic signal and determine the lower and upper cutoff frequencies, defined as the frequencies below which 5% and 95% of the signal's total energy reside, respectively.
-In addition, this function generates a visual output (a PNG image) containing both the Fourier Transform of the signal and the PSD (Welch method) plot. These visuals clearly mark the computed cutoff frequencies, providing an intuitive understanding of the signal’s frequency content.
-We observe that some signals have a maximum cutoff frequency reaching 50 Hz, while the minimum cutoff frequency can drop below 0.1 Hz.
+At this stage, using the Find, Meet, and Max Frequency function, we compute the Power Spectral Density (PSD) of each 
+seismic signal and determine the lower and upper cutoff frequencies, defined as the frequencies below which 5% and 95% 
+of the signal's total energy reside, respectively.In addition, this function generates a visual output (a PNG image) 
+containing both the Fourier Transform of the signal and the PSD (Welch method) plot. These visuals clearly mark the 
+computed cutoff frequencies, providing an intuitive understanding of the signal’s frequency content.
+We observe that some signals have a maximum cutoff frequency reaching 50 Hz, while the minimum cutoff frequency can 
+drop below 0.1 Hz.
 
 ### filtering.py
-We do not apply any upper cutoff filter, since the signals already have a natural limit at 50 Hz due to the Nyquist theorem, given that the sampling rate is 100 Hz.
-On the other hand, for the low-frequency end, we apply a high-pass filter at 1 Hz, in order to remove unwanted low-frequency noise and long-period artifacts.
-The filtering step takes as input the *_dmean_detrend_IC.mseed files and produces the filtered output files named *_dmean_detrend_IC_filtered.mseed.
+We do not apply any upper cutoff filter, since the signals already have a natural limit at 50 Hz due to the Nyquist 
+theorem, given that the sampling rate is 100 Hz.
+On the other hand, for the low-frequency end, we apply a high-pass filter at 1 Hz, in order to remove unwanted 
+low-frequency noise and long-period artifacts.
+The filtering step takes as input the *_dmean_detrend_IC.mseed files and produces the filtered output files 
+named *_dmean_detrend_IC_filtered.mseed.
 
 ### peak_segmentation.py
-The next step is to determine the peak segmentation of the signal. To achieve this, we first identify the onset point of the seismic wave using the Akaike Information Criterion (AIC) algorithm, and then locate the peak, defined as the absolute maximum amplitude of the signal.
-We then measure the time duration between the onset and the peak, and extend the window by the same duration beyond the peak, until the signal starts to decay.
-This extracted segment represents the most energetic and noise-free part of the waveform and is the one used in GreensonNet, since only a strong, clean signal can provide reliable information for estimating the Green’s Function.
-The peak segmentation step takes as input the *_dmean_detrend_IC_filtered.mseed files and produces as output the *_dmean_detrend_IC_filtered_PS.mseed files.
+The next step is to determine the peak segmentation of the signal. To achieve this, we first identify the onset point 
+of the seismic wave using the Akaike Information Criterion (AIC) algorithm, and then locate the peak, defined as the 
+absolute maximum amplitude of the signal.
+We then measure the time duration between the onset and the peak, and extend the window by the same duration beyond the 
+peak, until the signal starts to decay.
+This extracted segment represents the most energetic and noise-free part of the waveform and is the one used in 
+GreensonNet, since only a strong, clean signal can provide reliable information for estimating the Green’s Function.
+The peak segmentation step takes as input the *_dmean_detrend_IC_filtered.mseed files and produces as output the 
+*_dmean_detrend_IC_filtered_PS.mseed files.
 
-### convert_to_LQT.py
-The nextstep of the preprocessing pipeline is the transformation from the NZE coordinate system to the LQT coordinate system.
-In this transformation, the L-axis is defined as the axis pointing from the epicenter of the earthquake to the respective seismic station.
-The input to this step is the file:*_demean_detrend_IC_filtered_PS.mseed and the output is the transformed file:*_demean_detrend_IC_filtered_PS_LQT.mseed
+### convert_ΝΖΕ_to_LQT.py
+The nextstep of the preprocessing pipeline is the transformation from the NZE coordinate system to the LQT coordinate 
+system.
+In this transformation, the L-axis is defined as the axis pointing from the epicenter of the earthquake to the 
+respective seismic station.
+The input to this step is the file:*_demean_detrend_IC_filtered_PS.mseed and the output is the transformed 
+file:*_demean_detrend_IC_filtered_PS_LQT.mseed
 
 ### z_score_normalization.py
-The final step of the preprocessing pipeline is Z-score normalization.At this stage, we take the LQT-transformed signal—specifically, the file: *_dmean_dtrend_IC_filtered_PS_LQT.mseed
-and we produce the final normalized output: *_demean_detrend_IC_filtered_PS_Lqt_zscore.mseed. This normalized signal is the final version used for visual inspection before being fed into the GreensonNet neural network.
+The final step of the preprocessing pipeline is Z-score normalization.At this stage, we take the 
+LQT-transformed signal—specifically, the file: *_dmean_dtrend_IC_filtered_PS_LQT.mseed
+and we produce the final normalized output: *_demean_detrend_IC_filtered_PS_Lqt_zscore.mseed. This normalized signal 
+is the final version used for visual inspection before being fed into the GreensonNet neural network.
  
 ## The final folder tree
 After pre-processing the folder of each chanel should be like the following 
 
 ![img.png](images/img2.png)
+
+## The log files
+- [missing_files.json](./Logs/instrumentCorrection_errors.json)
+- [gaps.json](./Logs/instrumentCorrection_errors.json)
+- [overlaps.json](./Logs/instrumentCorrection_errors.json)
+- [glitches.json](./Logs/instrumentCorrection_errors.json)
+- [snr.json](./Logs/snr.json)
+- [instrumentCorrection_errors.json](./Logs/instrumentCorrection_errors.json)

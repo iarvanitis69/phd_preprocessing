@@ -1,31 +1,95 @@
 import os
 import numpy as np
+from obspy.geodetics.base import gps2dist_azimuth, locations2degrees
+import json
+
+def convert_ENZ_to_LQT_files(base_dir, excluded_stations, event_coords):
+    """
+    Αναζητά αναδρομικά όλα τα ENZ αρχεία ανά σταθμό και δημιουργεί LQT αρχεία,
+    εξαιρώντας όποιους σταθμούς δίνονται στο excluded_stations.
+
+    Parameters:
+        base_dir: Διαδρομή προς τον βασικό φάκελο με τα γεγονότα
+        excluded_stations: Λίστα με ονόματα σταθμών προς παράλειψη (π.χ. ["HL.SANT", "HT.APE"])
+        event_coords: [lat, lon, depth] του σεισμού σε km
+
+    Δημιουργεί αρχεία *_L.mseed, *_Q.mseed, *_T.mseed σε κάθε φάκελο σταθμού
+    """
+    for root, dirs, files in os.walk(base_dir):
+        for file in files:
+            if file.endswith("_E.msid"):
+                # path_E = os.path.join(root, file)
+                # path_N = path_E.replace("_E.msid", "_N.msid")
+                # path_Z = path_E.replace("_E.msid", "_Z.msid")
+                #
+                # if not (os.path.exists(path_N) and os.path.exists(path_Z)):
+                #     print(f"❌ Λείπει κάποιο από τα N ή Z για: {file}")
+                #     continue
+
+                # Από το path, απομονώνουμε το σταθμό (π.χ. HL.SANT)
+                parts = os.path.normpath(path_E).split(os.sep)
+                if len(parts) < 2:
+                    continue
+                station = parts[-2]  # Αναμένουμε δομή: .../<event>/<station>/...
+
+                if station in excluded_stations:
+                    print(f"⏭️ Παράλειψη σταθμού: {station}")
+                    continue
+
+                # Ανάκτηση συντεταγμένων σταθμού από info.json
+                info_path = os.path.join(root, "..", "..", "Stations", station, "info.json")
+                info_path = os.path.abspath(info_path)
+                if not os.path.exists(info_path):
+                    print(f"❌ Δεν βρέθηκε info.json για {station}")
+                    continue
+
+                with open(info_path) as f:
+                    station_info = json.load(f)
+                station_coords = [
+                    station_info["latitude"],
+                    station_info["longitude"],
+                    station_info.get("elevation_km", 0.0)
+                ]
+
+                try:
+                    phi, theta = calculate_angles(station_coords, event_coords)
+                    convert_ENZ_files_to_LQT_for_station(path_E, path_N, path_Z, phi, theta)
+                    print(f"✅ Μετατροπή LQT για {station} στο {root}")
+                except Exception as e:
+                    print(f"❌ Σφάλμα σε {station}: {e}")
 
 def calculate_angles(station_coords, event_coords):
-    # Συντεταγμένες: [latitude, longitude, depth]
+    """
+    Υπολογίζει την αζιμουθιακή γωνία (phi) και τη γωνία κατάδυσης (theta)
+    από τον σεισμό προς τον σταθμό, χρησιμοποιώντας την obspy.geodetics.base.gps2dist_azimuth.
+
+    Parameters:
+        station_coords: [lat, lon, depth] σε km
+        event_coords: [lat, lon, depth] σε km
+
+    Returns:
+        phi_deg: αζιμουθιακή γωνία σε μοίρες [0–360]
+        theta_deg: γωνία κατάδυσης σε μοίρες
+    """
     station_lat, station_lon, station_depth = station_coords
     event_lat, event_lon, event_depth = event_coords
 
-    # Μετατροπή γεωγραφικού μήκους και πλάτους σε ακτίνια
-    lat1, lon1 = np.radians(event_lat), np.radians(event_lon)
-    lat2, lon2 = np.radians(station_lat), np.radians(station_lon)
+    # Υπολογισμός αζιμουθιακής γωνίας με ObsPy
+    _, azimuth_deg, _ = gps2dist_azimuth(event_lat, event_lon, station_lat, station_lon)
+    phi_deg = azimuth_deg  # ήδη σε μοίρες
 
-    # Υπολογισμός αζιμουθίου (φι) - απλοποιημένος υπολογισμός
-    delta_lon = lon2 - lon1
-    x = np.cos(lat2) * np.sin(delta_lon)
-    y = np.cos(lat1) * np.sin(lat2) - np.sin(lat1) * np.cos(lat2) * np.cos(delta_lon)
-    phi = np.arctan2(x, y)
+    # Υπολογισμός επιφανειακής απόστασης σε km (με great-circle distance)
+    deg_distance = locations2degrees(event_lat, event_lon, station_lat, station_lon)
+    R = 6371.0  # Ακτίνα Γης σε km
+    horizontal_distance_km = np.radians(deg_distance) * R
 
-    # Υπολογισμός γωνίας κατάδυσης (θήτα)
-    delta_depth = station_depth - event_depth
-    distance_horizontal = np.sqrt((lat2 - lat1)**2 + (lon2 - lon1)**2)
-    theta = np.arctan2(delta_depth, distance_horizontal)
+    # Υπολογισμός γωνίας κατάδυσης (theta)
+    delta_depth_km = station_depth - event_depth
+    theta_rad = np.arctan2(delta_depth_km, horizontal_distance_km)
+    theta_deg = np.degrees(theta_rad)
 
-    # Μετατροπή γωνιών σε μοίρες
-    phi = np.degrees(phi)
-    theta = np.degrees(theta)
+    return phi_deg, theta_deg
 
-    return phi, theta
 
 def read_msid_file(path):
     return np.fromfile(path, dtype=np.float32)
@@ -33,7 +97,7 @@ def read_msid_file(path):
 def write_msid_file(path, data):
     data.astype(np.float32).tofile(path)
 
-def convert_ENZ_files_to_LQT_files(path_E, path_N, path_Z, phi_deg, theta_deg):
+def convert_ENZ_files_to_LQT_for_station(path_E, path_N, path_Z, phi_deg, theta_deg):
     # Ανάγνωση δεδομένων
     E = read_msid_file(path_E)
     N = read_msid_file(path_N)

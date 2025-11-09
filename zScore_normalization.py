@@ -19,7 +19,7 @@ def z_score_normalize_mseed(input_path):
     return output_path
 
 def zscore_normalize_all_files():
-    # Αναζήτηση όλων των αρχείων που τελειώνουν σε L/Q/T (κεφαλαία ή μικρά) και .msid
+    # Αναζήτηση όλων των αρχείων που τελειώνουν σε L/Q/T  και .mseed
     valid_suffixes = ("_L.mseed", "_Q.mseed", "_T.mseed")
 
     from main import BASE_DIR

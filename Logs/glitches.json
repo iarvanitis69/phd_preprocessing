@@ -1,0 +1,281 @@
+{
+  "20240921T140301_36.63_25.64_15.4km_M3.0": {
+    "HL.SANT": {
+      "HHZ": {
+        "count": 10,
+        "glitches": [
+          {
+            "start_index": 268,
+            "end_index": 272,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-21T14:02:32.749999Z",
+            "end_time": "2024-09-21T14:02:32.789999Z",
+            "peak_rise": 1.8693,
+            "peak_fall": -1.6571,
+            "file": "HL.SANT..HHZ__20240921T140231Z__20240921T140601Z.mseed"
+          },
+          {
+            "start_index": 1068,
+            "end_index": 1072,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-21T14:02:40.749999Z",
+            "end_time": "2024-09-21T14:02:40.789999Z",
+            "peak_rise": 1.3342,
+            "peak_fall": -1.5096,
+            "file": "HL.SANT..HHZ__20240921T140231Z__20240921T140601Z.mseed"
+          },
+          {
+            "start_index": 1074,
+            "end_index": 1078,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-21T14:02:40.809999Z",
+            "end_time": "2024-09-21T14:02:40.849999Z",
+            "peak_rise": 1.4398,
+            "peak_fall": -1.4224,
+            "file": "HL.SANT..HHZ__20240921T140231Z__20240921T140601Z.mseed"
+          },
+          {
+            "start_index": 1180,
+            "end_index": 1184,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-21T14:02:41.869999Z",
+            "end_time": "2024-09-21T14:02:41.909999Z",
+            "peak_rise": 1.3163,
+            "peak_fall": -1.8739,
+            "file": "HL.SANT..HHZ__20240921T140231Z__20240921T140601Z.mseed"
+          },
+          {
+            "start_index": 3411,
+            "end_index": 3415,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-21T14:03:04.179999Z",
+            "end_time": "2024-09-21T14:03:04.219999Z",
+            "peak_rise": 1.8146,
+            "peak_fall": -1.954,
+            "file": "HL.SANT..HHZ__20240921T140231Z__20240921T140601Z.mseed"
+          },
+          {
+            "start_index": 9084,
+            "end_index": 9088,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-21T14:04:00.909999Z",
+            "end_time": "2024-09-21T14:04:00.949999Z",
+            "peak_rise": 1.8649,
+            "peak_fall": -1.4244,
+            "file": "HL.SANT..HHZ__20240921T140231Z__20240921T140601Z.mseed"
+          },
+          {
+            "start_index": 11112,
+            "end_index": 11116,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-21T14:04:21.189999Z",
+            "end_time": "2024-09-21T14:04:21.229999Z",
+            "peak_rise": 1.9381,
+            "peak_fall": -1.9013,
+            "file": "HL.SANT..HHZ__20240921T140231Z__20240921T140601Z.mseed"
+          },
+          {
+            "start_index": 11119,
+            "end_index": 11123,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-21T14:04:21.259999Z",
+            "end_time": "2024-09-21T14:04:21.299999Z",
+            "peak_rise": 1.8218,
+            "peak_fall": -1.9575,
+            "file": "HL.SANT..HHZ__20240921T140231Z__20240921T140601Z.mseed"
+          },
+          {
+            "start_index": 13849,
+            "end_index": 13853,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-21T14:04:48.559999Z",
+            "end_time": "2024-09-21T14:04:48.599999Z",
+            "peak_rise": 1.9537,
+            "peak_fall": -1.3139,
+            "file": "HL.SANT..HHZ__20240921T140231Z__20240921T140601Z.mseed"
+          },
+          {
+            "start_index": 14642,
+            "end_index": 14646,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-21T14:04:56.489999Z",
+            "end_time": "2024-09-21T14:04:56.529999Z",
+            "peak_rise": 1.9335,
+            "peak_fall": -1.9424,
+            "file": "HL.SANT..HHZ__20240921T140231Z__20240921T140601Z.mseed"
+          }
+        ]
+      }
+    }
+  },
+  "20240928T150437_36.65_25.79_11.0km_M3.0": {
+    "HL.SANT": {
+      "HHZ": {
+        "count": 3,
+        "glitches": [
+          {
+            "start_index": 2425,
+            "end_index": 2429,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-28T15:04:31.970000Z",
+            "end_time": "2024-09-28T15:04:32.010000Z",
+            "peak_rise": 1.9484,
+            "peak_fall": -1.9646,
+            "file": "HL.SANT..HHZ__20240928T150407Z__20240928T150737Z.mseed"
+          },
+          {
+            "start_index": 3203,
+            "end_index": 3207,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-28T15:04:39.750000Z",
+            "end_time": "2024-09-28T15:04:39.790000Z",
+            "peak_rise": 1.9601,
+            "peak_fall": -1.9474,
+            "file": "HL.SANT..HHZ__20240928T150407Z__20240928T150737Z.mseed"
+          },
+          {
+            "start_index": 7638,
+            "end_index": 7642,
+            "channel": "HHZ",
+            "station": "SANT",
+            "network": "HL",
+            "start_time": "2024-09-28T15:05:24.100000Z",
+            "end_time": "2024-09-28T15:05:24.140000Z",
+            "peak_rise": 1.9085,
+            "peak_fall": -1.951,
+            "file": "HL.SANT..HHZ__20240928T150407Z__20240928T150737Z.mseed"
+          }
+        ]
+      }
+    }
+  },
+  "20250204T134403_36.65_25.60_14.4km_M3.3": {
+    "HL.AMGA": {
+      "HHZ": {
+        "count": 1,
+        "glitches": [
+          {
+            "start_index": 612,
+            "end_index": 616,
+            "channel": "HHZ",
+            "station": "AMGA",
+            "network": "HL",
+            "start_time": "2025-02-04T13:43:33.630000Z",
+            "end_time": "2025-02-04T13:43:33.670000Z",
+            "peak_rise": 1.6,
+            "peak_fall": -1.3283,
+            "file": "HL.AMGA..HHZ__20250204T134333Z__20250204T134703Z.mseed"
+          }
+        ]
+      }
+    }
+  },
+  "20250213T165000_36.69_25.67_1.0km_M3.1": {
+    "HT.AKRO": {
+      "HHN": {
+        "count": 1,
+        "glitches": [
+          {
+            "start_index": 8465,
+            "end_index": 8469,
+            "channel": "HHN",
+            "station": "AKRO",
+            "network": "HT",
+            "start_time": "2025-02-13T16:50:53.480000Z",
+            "end_time": "2025-02-13T16:50:53.520000Z",
+            "peak_rise": 1.3106,
+            "peak_fall": -1.3411,
+            "file": "HT.AKRO..HHN__20250213T164930Z__20250213T165300Z.mseed"
+          }
+        ]
+      }
+    }
+  },
+  "20250510T061958_36.69_25.76_14.1km_M3.2": {
+    "HL.APE": {
+      "HHN": {
+        "count": 1,
+        "glitches": [
+          {
+            "start_index": 755,
+            "end_index": 759,
+            "channel": "HHN",
+            "station": "APE",
+            "network": "HL",
+            "start_time": "2025-05-10T06:19:35.840000Z",
+            "end_time": "2025-05-10T06:19:35.880000Z",
+            "peak_rise": 1.4032,
+            "peak_fall": -1.7492,
+            "file": "HL.APE..HHN__20250510T061928Z__20250510T062258Z.mseed"
+          }
+        ]
+      }
+    }
+  },
+  "20250517T013836_36.65_25.70_12.8km_M3.5": {
+    "HL.APE": {
+      "HHN": {
+        "count": 1,
+        "glitches": [
+          {
+            "start_index": 7618,
+            "end_index": 7622,
+            "channel": "HHN",
+            "station": "APE",
+            "network": "HL",
+            "start_time": "2025-05-17T01:39:21.800000Z",
+            "end_time": "2025-05-17T01:39:21.840000Z",
+            "peak_rise": 1.4119,
+            "peak_fall": -1.3493,
+            "file": "HL.APE..HHN__20250517T013806Z__20250517T014136Z.mseed"
+          }
+        ]
+      }
+    }
+  },
+  "20250518T071017_36.73_25.74_13.3km_M3.3": {
+    "HL.APE": {
+      "HHE": {
+        "count": 1,
+        "glitches": [
+          {
+            "start_index": 4776,
+            "end_index": 4780,
+            "channel": "HHE",
+            "station": "APE",
+            "network": "HL",
+            "start_time": "2025-05-18T07:10:34.630000Z",
+            "end_time": "2025-05-18T07:10:34.670000Z",
+            "peak_rise": 1.315,
+            "peak_fall": -1.3703,
+            "file": "HL.APE..HHE__20250518T070947Z__20250518T071317Z.mseed"
+          }
+        ]
+      }
+    }
+  }
+}

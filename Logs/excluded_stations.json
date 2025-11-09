@@ -1,0 +1,78 @@
+{
+  "COUNT": 15,
+  "20110408T235106_36.63_25.66_10.0km_M3.4": {
+    "HT.CMBO": {
+      "reason": "channels lower than 3"
+    }
+  },
+  "20111212T225036_36.41_25.42_5.7km_M3.0": {
+    "HT.CMBO": {
+      "reason": "channels lower than 3"
+    }
+  },
+  "20120704T215258_36.52_25.80_2.0km_M3.0": {
+    "HT.CMBO": {
+      "reason": "channels lower than 3"
+    }
+  },
+  "20160326T063339_36.65_25.30_144.0km_M3.5": {
+    "HL.SANT": {
+      "reason": "channels lower than 3"
+    }
+  },
+  "20161205T155804_36.66_25.70_8.0km_M3.0": {
+    "HT.CMBO": {
+      "reason": "channels lower than 3"
+    }
+  },
+  "20250206T191629_36.58_25.63_10.7km_M3.4": {
+    "HT.ANYD": {
+      "reason": "missing StationXML file"
+    }
+  },
+  "20250210T194506_36.67_25.67_10.0km_M3.0": {
+    "HL.ANAF": {
+      "reason": "missing StationXML file"
+    }
+  },
+  "20250212T011738_36.58_25.63_9.0km_M3.6": {
+    "HT.ANYD": {
+      "reason": "missing StationXML file"
+    }
+  },
+  "20240921T140301_36.63_25.64_15.4km_M3.0": {
+    "HL.SANT": {
+      "reason": "Glitches"
+    }
+  },
+  "20240928T150437_36.65_25.79_11.0km_M3.0": {
+    "HL.SANT": {
+      "reason": "Glitches"
+    }
+  },
+  "20250204T134403_36.65_25.60_14.4km_M3.3": {
+    "HL.AMGA": {
+      "reason": "Glitches"
+    }
+  },
+  "20250213T165000_36.69_25.67_1.0km_M3.1": {
+    "HT.AKRO": {
+      "reason": "Glitches"
+    }
+  },
+  "20250510T061958_36.69_25.76_14.1km_M3.2": {
+    "HL.APE": {
+      "reason": "Glitches"
+    }
+  },
+  "20250517T013836_36.65_25.70_12.8km_M3.5": {
+    "HL.APE": {
+      "reason": "Glitches"
+    }
+  },
+  "20250518T071017_36.73_25.74_13.3km_M3.3": {
+    "HL.APE": {
+      "reason": "Glitches"
+    }
+  }
+}

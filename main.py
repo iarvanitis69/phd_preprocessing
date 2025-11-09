@@ -5,6 +5,7 @@ import multiprocessing
 import os
 
 from demean_detrend import demean_detrend
+from filltering import filter_all_files
 from fourier_transformation import find_max_and_min_freq
 from gaps import find_files_for_gaps
 from glitches import find_files_for_glitches_parallel
@@ -30,20 +31,20 @@ def main():
     #print("🔍 Ξεκινάει ο εντοπισμός στσθμων με λειψα αρχεία...")
     #find_stations_with_issues()
 
-    print("🔍 Ξεκινάει ο εντοπισμός gaps σε .mseed αρχεία...")
-    find_files_for_gaps()
+    #print("🔍 Ξεκινάει ο εντοπισμός gaps σε .mseed αρχεία...")
+    #find_files_for_gaps()
 
-    print("🔍 Ξεκινάει ο εντοπισμός overlaps σε .mseed αρχεία...")
-    find_files_for_overlaps()
+    #print("🔍 Ξεκινάει ο εντοπισμός overlaps σε .mseed αρχεία...")
+    #find_files_for_overlaps()
 
-    print("🔍 Ξεκινάει ο εντοπισμός glitches σε .mseed αρχεία...")
-    find_files_for_glitches_parallel(threshold=1.3, max_workers=6)
+    #print("🔍 Ξεκινάει ο εντοπισμός glitches σε .mseed αρχεία...")
+    #find_files_for_glitches_parallel(threshold=1.3, max_workers=6)
 
-    print("🔍 κάνει deMean/detrend σε όλα τα mseed αρχεια...")
-    demean_detrend()
+    #print("🔍 κάνει deMean/detrend σε όλα τα mseed αρχεια...")
+    #demean_detrend()
 
-    print("🔍 κάνει instrumentCorrection σε όλα τα mseed αρχεια...")
-    instrument_correction()
+    #print("🔍 κάνει instrumentCorrection σε όλα τα mseed αρχεια...")
+    #instrument_correction()
 
     # print("🔍 Ξεκινάει ο υπολογισμός SNR σε *_IC.mseed αρχεία...")
     find_snr()
