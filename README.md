@@ -290,6 +290,7 @@ This field provides a conservative estimate of the station’s signal quality.
 
 ### fourier_transformation.py
 
+![img.png](images/fourierPsd.png)
 
 ### filtering.py
 Regarding filtering, we conducted a Fourier Transformation and computed the Power Spectral Density (PSD) using the Welch 
@@ -300,9 +301,8 @@ our sampling rate is 100 Hz, we concluded that applying an upper cutoff filter i
 additional benefit.
 On the other hand, the minimum cutoff frequencies were found to be very low. However, frequencies below 1 Hz are likely 
 of anthropogenic origin. Therefore, we decided to filter them out using a fourth-order Butterworth filter with a lower 
-cutoff frequency set to 1 Hz.
-
-![img.png](images/fourierPsd.png)
+cutoff frequency set to 1 Hz. The function filter_all_files() takes as input the files *_demeanDetrend_IC.mseed files and
+provides as output the files *_demeanDetrend_IC_BPF.mseed file
 
 ### peak_segmentation.py
 The next step is to determine the peak segmentation of the signal. To achieve this, we first identify the onset point 
@@ -312,8 +312,14 @@ We then measure the time duration between the onset and the peak, and extend the
 peak, until the signal starts to decay.
 This extracted segment represents the most energetic and noise-free part of the waveform and is the one used in 
 GreensonNet, since only a strong, clean signal can provide reliable information for estimating the Green’s Function.
-The peak segmentation step takes as input the *_dmean_detrend_IC_filtered.mseed files and produces as output the 
-*_dmean_detrend_IC_filtered_PS.mseed files.
+Peak segmentation is carried out in two stages.
+In the first stage, the function Find Start and End Peak of Signal is executed, which estimates the beginning of the 
+seismic wave, its maximum amplitude, and its end. These values are then recorded in a JSON file.
+In the second stage, the function create_peak_segmentation() files is executed, which takes as input the 
+*_dmean_detrend_IC_BPF.mseed files and produces as output the *_dmean_detrend_IC_BPF_PS.mseed files.
+
+![img.png](images/peakSegmentation.png)
+
 
 ### convert_ΝΖΕ_to_LQT.py
 The nextstep of the preprocessing pipeline is the transformation from the NZE coordinate system to the LQT coordinate 
