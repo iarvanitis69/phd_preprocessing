@@ -296,7 +296,7 @@ Regarding filtering, we conducted a Fourier Transformation and computed the Powe
 method for all non-excluded stations. This PSD diagram revealed both the upper and lower cutoff frequencies, defined 
 respectively by the 95% and 5% energy thresholds.
 From these values, we observed that some signals exhibit very high upper cutoff frequencies, approaching 50 Hz. Since 
-our sampling rate is 100 H, we concluded that applying an upper cutoff filter is unnecessary, as it would provide no 
+our sampling rate is 100 Hz, we concluded that applying an upper cutoff filter is unnecessary, as it would provide no 
 additional benefit.
 On the other hand, the minimum cutoff frequencies were found to be very low. However, frequencies below 1 Hz are likely 
 of anthropogenic origin. Therefore, we decided to filter them out using a fourth-order Butterworth filter with a lower 
@@ -319,18 +319,17 @@ The peak segmentation step takes as input the *_dmean_detrend_IC_filtered.mseed 
 The nextstep of the preprocessing pipeline is the transformation from the NZE coordinate system to the LQT coordinate 
 system.
 In this transformation, the L-axis is defined as the axis pointing from the epicenter of the earthquake to the 
-respective seismic station.
-The input to this step is the file:*_demean_detrend_IC_filtered_PS.mseed and the output is the transformed 
-file:*_demean_detrend_IC_filtered_PS_LQT.mseed
+respective seismic station. The input to this step is the file:*_demean_detrend_IC_filtered_PS.mseed and the output is 
+the transformed file:*_demean_detrend_IC_filtered_PS_LQT.mseed
 
 ### z_score_normalization.py
 The final step of the preprocessing pipeline is Z-score normalization.At this stage, we take the 
-LQT-transformed signal—specifically, the file: *_dmean_dtrend_IC_filtered_PS_LQT.mseed
-and we produce the final normalized output: *_demean_detrend_IC_filtered_PS_Lqt_zscore.mseed. This normalized signal 
-is the final version used for visual inspection before being fed into the GreensonNet neural network.
+LQT-transformed signal—specifically, the file: *_dmean_dtrend_IC_filtered_PS_LQT.mseed and we produce the final 
+normalized output: *_demean_detrend_IC_filtered_PS_Lqt_zscore.mseed. This normalized signal is the final version used 
+for visual inspection before being fed into the GreensonNet neural network.
  
 ## The final folder tree
-After pre-processing the folder of each chanel should be like the following 
+After pre-processing the folder of each channel should be like the following 
 
 ![img.png](images/img2.png)
 
