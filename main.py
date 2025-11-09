@@ -47,10 +47,10 @@ def main():
     #instrument_correction()
 
     # print("🔍 Ξεκινάει ο υπολογισμός SNR σε *_IC.mseed αρχεία...")
-    find_snr()
+    #find_snr()
 
     # print("🔍 βρίσκει την μεγιστη συχνοτητα αποκοπής για όλα τα *_demean_detrend.mseed αρχεια...")
-    #find_max_and_min_freq()
+    find_max_and_min_freq()
 
     # print("🔍 φιλτραρισμα όλων των αρχείων ...")
     #filter_all_files()()

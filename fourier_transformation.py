@@ -124,7 +124,7 @@ def find_max_and_min_freq():
 
     for root, _, files in os.walk(BASE_DIR):
         for fname in files:
-            if fname.endswith("_demean_detrend_IC.mseed"):
+            if fname.endswith("_demeanDetrend_IC.mseed"):
                 full_path = os.path.join(root, fname)
                 process_file(full_path, BASE_DIR, LOG_DIR, excluded)
 
