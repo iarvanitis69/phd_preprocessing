@@ -48,7 +48,6 @@ def compute_edges_middle_max(trace: Trace):
 
     return edge_max, middle_max, first_max, last_max, total_duration
 
-
 def compute_snr(edge_max: float, middle_max: float) -> float:
     eps = 1e-12
     return float(middle_max / (edge_max + eps))
@@ -65,7 +64,6 @@ def load_json(path: str) -> dict:
 def save_json(path: str, data: dict):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-
 
 def insert_record(db: dict, event_name: str, station: str, channel: str,
                   edge_max: float, middle_max: float, snr: float,
@@ -93,13 +91,13 @@ def guess_event_name(file_path: str) -> str:
 def is_excluded(excluded: dict, event: str, station: str) -> bool:
     return event in excluded and station in excluded[event]
 
+
 def process_file(path: str, snr_file_path: str, excluded: dict):
     db_snr = load_json(snr_file_path)
     if "count" not in db_snr:
         db_snr["count"] = 0
 
     event_name = guess_event_name(path)
-    station_snr_map = {}
 
     try:
         st = read(path)
@@ -117,6 +115,12 @@ def process_file(path: str, snr_file_path: str, excluded: dict):
             print(f"⛔ Παράλειψη excluded σταθμού: {event_name}/{station}/{channel}")
             continue
 
+        if (event_name in db_snr and
+                station in db_snr[event_name] and
+                channel in db_snr[event_name][station]):
+            print(f"⏩ Ήδη υπάρχει: {event_name}/{station}/{channel} – Παράλειψη")
+            continue
+
         try:
             edge_max, middle_max, first_max, last_max, total_duration = compute_edges_middle_max(tr)
             snr = compute_snr(edge_max, middle_max)
@@ -124,33 +128,33 @@ def process_file(path: str, snr_file_path: str, excluded: dict):
             print(f"⚠️ Παράλειψη {path} {station}.{channel}: {e}")
             continue
 
-        st_entry = station_snr_map.setdefault(station, {})
-        st_entry[channel] = {
-            "edge_max": edge_max,
-            "middle_max": middle_max,
-            "first_max": first_max,
-            "last_max": last_max,
-            "snr": snr,
-            "total_duration": total_duration
-        }
-
         print(f"📊 {event_name}/{station}/{channel}: SNR={snr:.3f}")
 
-    for station, channels in station_snr_map.items():
-        for ch, vals in channels.items():
-            insert_record(db_snr, event_name, station, ch,
-                          vals["edge_max"], vals["middle_max"],
-                          vals["snr"], vals["first_max"], vals["last_max"], vals["total_duration"])
-        db_snr["count"] += 1
+        insert_record(db_snr, event_name, station, channel,
+                      edge_max, middle_max, snr, first_max, last_max, total_duration)
 
-    save_json(snr_file_path, db_snr)
+        # ✅ Υπολογισμός minimum_snr μόνο όταν υπάρχουν και τα 3 απαραίτητα κανάλια
+        required_channels = {"HHE", "HHN", "HHZ"}
+        station_channels = db_snr[event_name][station]
+        available_channels = {ch for ch in station_channels if
+                              isinstance(station_channels[ch], dict) and "snr" in station_channels[ch]}
+
+        if required_channels.issubset(available_channels):
+            snrs = [station_channels[ch]["snr"] for ch in required_channels]
+            min_snr = float(min(snrs))
+            db_snr[event_name][station]["minimum_snr"] = min_snr
+            print(f"✅ Υπολογίστηκε minimum_snr για {event_name}/{station}: {min_snr:.3f}")
+
+        db_snr["count"] += 1
+        save_json(snr_file_path, db_snr)
+
 
 def iter_mseed_files(root: str):
     for dirpath, _, filenames in os.walk(root):
         if "Logs" in dirpath:
             continue
         for fn in filenames:
-            if fn.endswith("_demean_detrend_IC.mseed"):
+            if fn.endswith("_demeanDetrend_IC.mseed"):
                 yield os.path.join(dirpath, fn)
 
 def find_snr():
