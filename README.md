@@ -5,7 +5,7 @@
 <img src="images/completeActivityDiagram.png" alt="img" width="400"/>
 
 ## Pre-Processing
-<img src="images/img1.png" alt="img_1" width="400"/>
+<img src="images/preProcessing.png" alt="img_1" width="400"/>
 
 ## Installation
 
@@ -220,6 +220,7 @@ This file contains the Signal-to-Noise Ratio (SNR) values computed for every eve
 well-defined signal segments.
 
 Keys in the JSON file
+
     - COUNT_OF_STATIONS An integer that represents the total number of unique stations for which the SNR was 
                         successfully calculated.
 
@@ -288,21 +289,20 @@ This field provides a conservative estimate of the station’s signal quality.
 ```
 
 ### fourier_transformation.py
-At this stage, using the Find, Meet, and Max Frequency function, we compute the Power Spectral Density (PSD) of each 
-seismic signal and determine the lower and upper cutoff frequencies, defined as the frequencies below which 5% and 95% 
-of the signal's total energy reside, respectively.In addition, this function generates a visual output (a PNG image) 
-containing both the Fourier Transform of the signal and the PSD (Welch method) plot. These visuals clearly mark the 
-computed cutoff frequencies, providing an intuitive understanding of the signal’s frequency content.
-We observe that some signals have a maximum cutoff frequency reaching 50 Hz, while the minimum cutoff frequency can 
-drop below 0.1 Hz.
+
 
 ### filtering.py
-We do not apply any upper cutoff filter, since the signals already have a natural limit at 50 Hz due to the Nyquist 
-theorem, given that the sampling rate is 100 Hz.
-On the other hand, for the low-frequency end, we apply a high-pass filter at 1 Hz, in order to remove unwanted 
-low-frequency noise and long-period artifacts.
-The filtering step takes as input the *_dmean_detrend_IC.mseed files and produces the filtered output files 
-named *_dmean_detrend_IC_filtered.mseed.
+Regarding filtering, we conducted a Fourier Transformation and computed the Power Spectral Density (PSD) using the Welch 
+method for all non-excluded stations. This PSD diagram revealed both the upper and lower cutoff frequencies, defined 
+respectively by the 95% and 5% energy thresholds.
+From these values, we observed that some signals exhibit very high upper cutoff frequencies, approaching 50 Hz. Since 
+our sampling rate is 100 H, we concluded that applying an upper cutoff filter is unnecessary, as it would provide no 
+additional benefit.
+On the other hand, the minimum cutoff frequencies were found to be very low. However, frequencies below 1 Hz are likely 
+of anthropogenic origin. Therefore, we decided to filter them out using a fourth-order Butterworth filter with a lower 
+cutoff frequency set to 1 Hz.
+
+![img.png](images/fourierPsd.png)
 
 ### peak_segmentation.py
 The next step is to determine the peak segmentation of the signal. To achieve this, we first identify the onset point 
