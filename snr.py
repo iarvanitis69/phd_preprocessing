@@ -29,7 +29,7 @@ def compute_edges_middle_max(trace: Trace):
 
     total_duration = len(data) / fs if fs > 0 else 0.0
     if total_duration < 190:
-        print(f"total_duration:{total_duration:.2f}s")
+        print(f"total_duration: {total_duration:.2f}s")
 
     w1 = int(PRESET_SEC * fs)
     w2 = int((total_duration - PRESET_SEC - END_SEC) * fs)
@@ -62,107 +62,156 @@ def load_json(path: str) -> dict:
     return {}
 
 def save_json(path: str, data: dict):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    """
+    Αποθηκεύει το JSON αρχείο με το COUNT_OF_STATIONS πρώτο,
+    και μετά το Events, χωρίς να αλλάζει τίποτα άλλο στη δομή.
+    """
+    # Δημιουργία νέου Ordered dictionary με σωστή σειρά
+    ordered = {}
+    if "COUNT_OF_STATIONS" in data:
+        ordered["COUNT_OF_STATIONS"] = data["COUNT_OF_STATIONS"]
+    if "Events" in data:
+        ordered["Events"] = data["Events"]
 
-def insert_record(db: dict, event_name: str, station: str, channel: str,
+    # Αν υπάρχουν και άλλα πεδία (π.χ. metadata), τα κρατάμε
+    for k, v in data.items():
+        if k not in ordered:
+            ordered[k] = v
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(ordered, f, indent=2, ensure_ascii=False)
+
+
+def insert_record(db: dict, year: str, event_name: str, station: str, channel: str,
                   edge_max: float, middle_max: float, snr: float,
                   first_max: float, last_max: float, total_duration: float):
-    ev = db.setdefault(event_name, {})
-    st = ev.setdefault(station, {})
-    ch = st.setdefault(channel, {})
-    ch.update({
+    """
+    Συμπληρώνει τη βάση db με νέο κανάλι, σταθμό ή event χωρίς να ξαναδημιουργεί τη ρίζα.
+    Αυξάνει το COUNT_OF_STATIONS μόνο αν ο σταθμός είναι καινούριος.
+    """
+
+    if "Events" not in db:
+        raise ValueError("Το κλειδί 'Events' δεν υπάρχει στη βάση. Πρέπει να έχει δημιουργηθεί εξωτερικά.")
+
+    if "COUNT_OF_STATIONS" not in db:
+        db["COUNT_OF_STATIONS"] = 0
+
+    events = db["Events"]
+
+    if year not in events:
+        events[year] = {}
+
+    if event_name not in events[year]:
+        events[year][event_name] = {}
+
+    if station not in events[year][event_name]:
+        events[year][event_name][station] = {}
+        db["COUNT_OF_STATIONS"] += 1  # ✅ Αύξηση εδώ, τη στιγμή προσθήκης νέου σταθμού
+
+    events[year][event_name][station][channel] = {
         "edge_max": edge_max,
         "middle_max": middle_max,
         "first_max": first_max,
         "last_max": last_max,
         "snr": snr,
         "total_duration": total_duration
-    })
+    }
 
-def guess_event_name(file_path: str) -> str:
-    parts = os.path.normpath(file_path).split(os.sep)
-    if "Events" in parts:
-        idx = parts.index("Events")
-        if idx + 2 < len(parts):
-            return parts[idx + 2]
-    return os.path.splitext(os.path.basename(file_path))[0]
 
 def is_excluded(excluded: dict, event: str, station: str) -> bool:
     return event in excluded and station in excluded[event]
 
-
-def process_file(path: str, snr_file_path: str, excluded: dict):
-    db_snr = load_json(snr_file_path)
-    if "count" not in db_snr:
-        db_snr["count"] = 0
-
-    event_name = guess_event_name(path)
-
-    try:
-        st = read(path)
-    except Exception as e:
-        print(f"⚠️ Αποτυχία ανάγνωσης {path}: {e}")
+def process_station(station_dir: str, snr_db: dict, excluded: dict):
+    parts = os.path.normpath(station_dir).split(os.sep)
+    if len(parts) >= 4:
+        year = parts[-3]
+        event_name = parts[-2]
+        station = parts[-1]
+    else:
         return
 
-    for tr in st:
-        network = getattr(tr.stats, "network", "XX") or "XX"
-        station_code = getattr(tr.stats, "station", "UNK") or "UNK"
-        station = f"{network}.{station_code}"
-        channel = getattr(tr.stats, "channel", "UNK") or "UNK"
+    if is_excluded(excluded, event_name, station):
+        print(f"⛔ Παράλειψη excluded σταθμού: {event_name}/{station}")
+        return
 
-        if is_excluded(excluded, event_name, station):
-            print(f"⛔ Παράλειψη excluded σταθμού: {event_name}/{station}/{channel}")
+    if year not in snr_db["Events"]:
+        snr_db["Events"][year] = {}
+
+    if event_name not in snr_db["Events"][year]:
+        snr_db["Events"][year][event_name] = {}
+
+    if station not in snr_db["Events"][year][event_name]:
+        snr_db["Events"][year][event_name][station] = {}
+        snr_db["COUNT_OF_STATIONS"] += 1
+
+    channel_results = {}
+
+    for filename in os.listdir(station_dir):
+        if not filename.endswith("_demeanDetrend_IC.mseed"):
             continue
 
-        if (event_name in db_snr and
-                station in db_snr[event_name] and
-                channel in db_snr[event_name][station]):
-            print(f"⏩ Ήδη υπάρχει: {event_name}/{station}/{channel} – Παράλειψη")
-            continue
-
+        path = os.path.join(station_dir, filename)
         try:
-            edge_max, middle_max, first_max, last_max, total_duration = compute_edges_middle_max(tr)
-            snr = compute_snr(edge_max, middle_max)
+            st = read(path)
         except Exception as e:
-            print(f"⚠️ Παράλειψη {path} {station}.{channel}: {e}")
+            print(f"⚠️ Αποτυχία ανάγνωσης {path}: {e}")
             continue
 
-        print(f"📊 {event_name}/{station}/{channel}: SNR={snr:.3f}")
+        for tr in st:
+            channel = getattr(tr.stats, "channel", "UNK") or "UNK"
 
-        insert_record(db_snr, event_name, station, channel,
-                      edge_max, middle_max, snr, first_max, last_max, total_duration)
+            if channel in snr_db["Events"][year][event_name][station]:
+                print(f"⏩ Ήδη υπάρχει: {event_name}/{station}/{channel} – Παράλειψη")
+                continue
 
-        # ✅ Υπολογισμός minimum_snr μόνο όταν υπάρχουν και τα 3 απαραίτητα κανάλια
-        required_channels = {"HHE", "HHN", "HHZ"}
-        station_channels = db_snr[event_name][station]
-        available_channels = {ch for ch in station_channels if
-                              isinstance(station_channels[ch], dict) and "snr" in station_channels[ch]}
+            try:
+                edge_max, middle_max, first_max, last_max, total_duration = compute_edges_middle_max(tr)
+                snr = compute_snr(edge_max, middle_max)
+            except Exception as e:
+                print(f"⚠️ Παράλειψη {path} {station}.{channel}: {e}")
+                continue
 
-        if required_channels.issubset(available_channels):
-            snrs = [station_channels[ch]["snr"] for ch in required_channels]
-            min_snr = float(min(snrs))
-            db_snr[event_name][station]["minimum_snr"] = min_snr
-            print(f"✅ Υπολογίστηκε minimum_snr για {event_name}/{station}: {min_snr:.3f}")
+            print(f"📊 {event_name}/{station}/{channel}: SNR={snr:.3f}")
+            insert_record(snr_db, year, event_name, station, channel,
+                          edge_max, middle_max, snr, first_max, last_max, total_duration)
+            channel_results[channel] = snr
 
-        db_snr["count"] += 1
-        save_json(snr_file_path, db_snr)
+    required_channels = {"HHE", "HHN", "HHZ"}
+    if required_channels.issubset(channel_results):
+        min_snr = float(min(channel_results[ch] for ch in required_channels))
+        snr_db["Events"][year][event_name][station]["minimum_snr"] = min_snr
+        print(f"✅ Υπολογίστηκε minimum_snr για {event_name}/{station}: {min_snr:.3f}")
 
-
-def iter_mseed_files(root: str):
-    for dirpath, _, filenames in os.walk(root):
-        if "Logs" in dirpath:
+def iter_station_dirs(events_dir: str):
+    for year_dir in os.listdir(events_dir):
+        year_path = os.path.join(events_dir, year_dir)
+        if not os.path.isdir(year_path):
             continue
-        for fn in filenames:
-            if fn.endswith("_demeanDetrend_IC.mseed"):
-                yield os.path.join(dirpath, fn)
+        for event_name in os.listdir(year_path):
+            event_path = os.path.join(year_path, event_name)
+            if not os.path.isdir(event_path):
+                continue
+            for station_name in os.listdir(event_path):
+                station_path = os.path.join(event_path, station_name)
+                if not os.path.isdir(station_path):
+                    continue
+                if any(f.endswith("_demeanDetrend_IC.mseed") for f in os.listdir(station_path)):
+                    yield station_path
 
 def find_snr():
     from main import BASE_DIR, LOG_DIR
     excluded = load_excluded_stations(LOG_DIR)
     snr_file = os.path.join(LOG_DIR, "snr.json")
-    for f in iter_mseed_files(BASE_DIR):
-        process_file(f, snr_file, excluded)
+    snr_db = load_json(snr_file)
+
+    if "Events" not in snr_db:
+        snr_db["Events"] = {}
+    if "COUNT_OF_STATIONS" not in snr_db:
+        snr_db["COUNT_OF_STATIONS"] = 0
+
+    for station_dir in iter_station_dirs(BASE_DIR):
+        process_station(station_dir, snr_db, excluded)
+        save_json(snr_file, snr_db)
 
 if __name__ == "__main__":
     find_snr()
