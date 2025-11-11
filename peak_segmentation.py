@@ -308,7 +308,6 @@ def plot_station_duration_distribution(json_path: str = None, bin_size: float = 
     import os
     import numpy as np
     import matplotlib.pyplot as plt
-    from utils import load_json
     from main import LOG_DIR
 
     # --- Αν δεν δοθεί path, πάρε το προεπιλεγμένο ---
