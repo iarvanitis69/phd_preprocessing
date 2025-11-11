@@ -71,10 +71,10 @@ def find_peak_segmentation():
     import json
     import numpy as np
     from obspy import read
-    from scipy.signal import find_peaks
+    from scipy.signal import find_peaks, butter, filtfilt, hilbert
     from main import LOG_DIR, BASE_DIR
 
-    # --- Inline helper για SNR ---
+    # --- Helper: υπολογισμός ελάχιστου SNR ---
     def add_min_station_snr(station_results: dict, minimum_station_snr: float):
         max_duration = 0.0
         for ch, info in station_results.items():
@@ -86,6 +86,14 @@ def find_peak_segmentation():
                 except ValueError:
                     continue
         station_results["minimum_station_snr"] = round(minimum_station_snr, 3)
+
+    # --- Bandpass φίλτρο 1–20 Hz ---
+    def bandpass_filter(data, sr, fmin=1.0, fmax=20.0, order=4):
+        nyquist = 0.5 * sr
+        low = fmin / nyquist
+        high = fmax / nyquist
+        b, a = butter(order, [low, high], btype="band")
+        return filtfilt(b, a, data)
 
     # --- Paths ---
     OUTPUT_JSON = os.path.join(LOG_DIR, "PS_boundaries.json")
@@ -118,7 +126,7 @@ def find_peak_segmentation():
         for event, stations in events.items():
             for station, chans in stations.items():
 
-                # ➤ Έλεγχος αν υπάρχει ήδη
+                # ➤ Skip αν υπάρχει ήδη
                 if (
                     str(year) in all_results
                     and event in all_results[str(year)]
@@ -149,27 +157,34 @@ def find_peak_segmentation():
                             try:
                                 data = tr.data.astype(float)
                                 sr = tr.stats.sampling_rate
+
+                                # --- Βήμα 1: Εύρεση AIC έναρξης ---
                                 aic_idx, _ = aic_picker(data)
                                 if aic_idx is None:
                                     print(f"⚠️ AIC αποτυχία για {tr.id}")
                                     continue
 
-                                abs_data = np.abs(data)
-                                max_val = np.max(abs_data)
-                                if max_val == 0:
-                                    print(f"⚠️ Μηδενικό σήμα στο {tr.id}")
+                                # --- Βήμα 2: Bandpass 1–20 Hz ---
+                                try:
+                                    filtered = bandpass_filter(data, sr, 1.0, 20.0)
+                                except Exception as e:
+                                    print(f"⚠️ Σφάλμα στο bandpass {tr.id}: {e}")
                                     continue
-                                norm_data = abs_data / max_val
 
-                                start_time = tr.stats.starttime + aic_idx / sr
+                                # --- Βήμα 3: Hilbert envelope ---
+                                envelope = np.abs(hilbert(filtered))
+                                norm_env = envelope / (np.max(envelope) or 1.0)
+
+                                # --- Βήμα 4: Buffer 0.5 s μετά το AIC ---
                                 buffer_samples = int(0.5 * sr)
-                                search_segment = norm_data[aic_idx + buffer_samples:]
+                                search_segment = norm_env[aic_idx + buffer_samples:]
                                 threshold = 0.2 * np.max(search_segment)
 
+                                # --- Βήμα 5: Εύρεση peaks πάνω από το threshold ---
                                 peaks, properties = find_peaks(
                                     search_segment,
                                     height=threshold,
-                                    prominence=0.1,
+                                    prominence=0.5,
                                     distance=int(0.3 * sr)
                                 )
 
@@ -179,35 +194,38 @@ def find_peak_segmentation():
                                     main_peak = peaks[np.argmax(properties["peak_heights"])]
                                     pick_idx = aic_idx + buffer_samples + main_peak
 
+                                # --- Βήμα 6: Ορισμός χρόνων ---
+                                start_time = tr.stats.starttime + aic_idx / sr
                                 pick_time = tr.stats.starttime + pick_idx / sr
-                                pick_ampl = float(norm_data[pick_idx])
                                 end_idx = 2 * pick_idx - aic_idx
                                 end_time = tr.stats.starttime + end_idx / sr
                                 duration_samples = int(2 * (pick_idx - aic_idx))
                                 duration_time = duration_samples / sr
 
+                                pick_ampl = float(norm_env[pick_idx])
                                 ch_id = tr.id.split('.')[-1]  # HHZ
 
+                                # --- Αποθήκευση αποτελεσμάτων ---
                                 station_results[ch_id] = {
                                     "start_idx": int(aic_idx),
                                     "start_time": str(start_time),
                                     "peak_amplitude_idx": int(pick_idx),
                                     "peak_amplitude_time": str(pick_time),
-                                    "peak_amplitude": pick_ampl,
+                                    "peak_amplitude": round(pick_ampl, 5),
                                     "end_of_peak_segment_sample": int(end_idx),
                                     "end_of_peak_segment_time": str(end_time),
                                     "duration_nof_samples": duration_samples,
-                                    "duration_time": str(duration_time),
+                                    "duration_time": f"{duration_time:.2f}",
                                 }
 
                             except Exception as e:
                                 print(f"⚠️ Σφάλμα στο {year}/{event}/{station}/{tr.id}: {e}")
 
-                # ✅ Μόλις ολοκληρωθεί ο σταθμός:
+                # ✅ Μόλις ολοκληρωθεί ο σταθμός
                 if len(station_results) > 0:
                     add_min_station_snr(station_results, chans.get("minimum_snr", 0))
 
-                    # --- Ενημέρωση συνολικού dict με σωστή ιεραρχία ---
+                    # --- Ενημέρωση δομής (year → event → station) ---
                     year_dict = all_results.setdefault(str(year), {})
                     event_dict = year_dict.setdefault(event, {})
                     event_dict[station] = station_results
@@ -216,8 +234,9 @@ def find_peak_segmentation():
                     save_json(OUTPUT_JSON, all_results)
 
                     print(
-                        f'💾 Αποθηκεύτηκαν τα αποτελέσματα για {year}/{event}/{station}: '
-                        f'minimum_station_snr={chans.get("minimum_snr", 0)}, duration_time_HHZ={duration_time:.2f}'
+                        f'💾 Αποθηκεύτηκε {year}/{event}/{station}: '
+                        f'minimum_station_snr={chans.get("minimum_snr", 0)}, '
+                        f'duration_time_HHZ={duration_time:.2f}'
                     )
 
     print(f"\n✅ Ολοκληρώθηκε η καταγραφή όλων των σταθμών στο: {OUTPUT_JSON}")
