@@ -37,36 +37,7 @@ def insert_channel_result(db: dict, event: str, station: str, channel: str, resu
     st[channel] = result
 
 
-def add_station_max_duration_and_min_station_snr(db: dict, event_name: str, station_name: str, minimun_station_snr: float):
-    """
-    Υπολογίζει τη μέγιστη διάρκεια και το ελάχιστο SNR
-    και τα προσθέτει στο προσωρινό dict 'db'.
-    """
-    event_dict = db.get(event_name)
-    if event_dict is None:
-        print(f"❌ Δεν βρέθηκε το event: {event_name}")
-        return
 
-    station_dict = event_dict.get(station_name)
-    if station_dict is None:
-        print(f"❌ Δεν βρέθηκε ο σταθμός: {station_name}")
-        return
-
-    max_duration = 0.0
-    for channel, info in station_dict.items():
-        if isinstance(info, dict) and "duration_time" in info:
-            try:
-                dur = float(info["duration_time"])
-                if dur > max_duration:
-                    max_duration = dur
-            except ValueError:
-                continue
-
-    station_dict["max_station_duration"] = round(max_duration, 3)
-    station_dict["minimun_station_snr"] = round(minimun_station_snr, 3)
-
-    event_dict[station_name] = station_dict
-    db[event_name] = event_dict
 
 
 def extract_segment_from_mseed_file(input_path: str, start_index: int, duration_samples: int):
@@ -118,23 +89,9 @@ def find_peak_segmentation():
     from main import LOG_DIR, BASE_DIR
 
     # --- Inline βελτιωμένες συναρτήσεις χωρίς I/O ---
-    def insert_channel_result(db: dict, event: str, station: str, channel: str, result: dict):
-        ev = db.setdefault(event, {})
-        st = ev.setdefault(station, {})
-        st[channel] = result
-
-    def add_station_max_duration_and_min_station_snr(db: dict, event_name: str, station_name: str, minimun_station_snr: float):
-        event_dict = db.get(event_name)
-        if event_dict is None:
-            print(f"❌ Δεν βρέθηκε το event: {event_name}")
-            return
-        station_dict = event_dict.get(station_name)
-        if station_dict is None:
-            print(f"❌ Δεν βρέθηκε ο σταθμός: {station_name}")
-            return
-
+    def add_min_station_snr(station_results: dict, minimum_station_snr: float):
         max_duration = 0.0
-        for channel, info in station_dict.items():
+        for ch, info in station_results.items():
             if isinstance(info, dict) and "duration_time" in info:
                 try:
                     dur = float(info["duration_time"])
@@ -142,11 +99,7 @@ def find_peak_segmentation():
                         max_duration = dur
                 except ValueError:
                     continue
-
-        station_dict["max_station_duration"] = round(max_duration, 3)
-        station_dict["minimun_station_snr"] = round(minimun_station_snr, 3)
-        event_dict[station_name] = station_dict
-        db[event_name] = event_dict
+        station_results["minimum_station_snr"] = round(minimum_station_snr, 3)
 
     # --- Paths ---
     OUTPUT_JSON = os.path.join(LOG_DIR, "PS_boundaries.json")
@@ -173,26 +126,26 @@ def find_peak_segmentation():
                 event_path = os.path.join(year_path, event)
                 station_path = os.path.join(event_path, station)
 
-                # προσωρινό dict για αυτόν το σταθμό
+                # προσωρινό dict μόνο για αυτόν τον σταθμό
                 station_results = {}
 
-                for root, _, channels in os.walk(station_path):
+                for root, _, files in os.walk(station_path):
                     if "info.json" in root:
                         continue
-                    for channel in channels:
-                        if not channel.endswith("_demeanDetrend_IC_BPF.mseed"):
+                    for fname in files:
+                        if not fname.endswith("_demeanDetrend_IC_BPF.mseed") or not "HHZ" in fname:
                             continue
                         try:
-                            st = read(os.path.join(station_path, channel))
+                            st = read(os.path.join(station_path, fname))
                         except Exception as e:
-                            print(f"⚠️ Αποτυχία ανάγνωσης {channel}: {e}")
+                            print(f"⚠️ Αποτυχία ανάγνωσης {fname}: {e}")
                             continue
 
                         for tr in st:
                             try:
                                 data = tr.data.astype(float)
                                 sr = tr.stats.sampling_rate
-                                aic_idx, aic_curve = aic_picker(data)
+                                aic_idx, _ = aic_picker(data)
                                 if aic_idx is None:
                                     print(f"⚠️ AIC αποτυχία για {tr.id}")
                                     continue
@@ -205,8 +158,6 @@ def find_peak_segmentation():
                                 norm_data = abs_data / max_val
 
                                 start_time = tr.stats.starttime + aic_idx / sr
-
-                                # --- Buffer 0.5s μετά το AIC ---
                                 buffer_samples = int(0.5 * sr)
                                 search_segment = norm_data[aic_idx + buffer_samples:]
                                 threshold = 0.2 * np.max(search_segment)
@@ -233,43 +184,34 @@ def find_peak_segmentation():
 
                                 ch_id = tr.id.split('.')[-1]
 
-                                insert_channel_result(
-                                    all_results,
-                                    event,
-                                    station,
-                                    ch_id,
-                                    {
-                                        "start_idx": int(aic_idx),
-                                        "start_time": str(start_time),
-                                        "peak_amplitude_idx": int(pick_idx),
-                                        "peak_amplitude_time": str(pick_time),
-                                        "peak_amplitude": pick_ampl,
-                                        "end_of_peak_segment_sample": int(end_idx),
-                                        "end_of_peak_segment_time": str(end_time),
-                                        "duration_nof_samples": duration_samples,
-                                        "duration_time": str(duration_time),
-                                    },
-                                )
-
-                                print(f"✅ {event}/{station}/{tr.id}: {start_time} → {end_time}")
+                                station_results[ch_id] = {
+                                    "start_idx": int(aic_idx),
+                                    "start_time": str(start_time),
+                                    "peak_amplitude_idx": int(pick_idx),
+                                    "peak_amplitude_time": str(pick_time),
+                                    "peak_amplitude": pick_ampl,
+                                    "end_of_peak_segment_sample": int(end_idx),
+                                    "end_of_peak_segment_time": str(end_time),
+                                    "duration_nof_samples": duration_samples,
+                                    "duration_time": str(duration_time),
+                                }
 
                             except Exception as e:
                                 print(f"⚠️ Σφάλμα στο {event}/{station}/{tr.id}: {e}")
 
-                # Αν συμπληρώθηκαν όλα τα κανάλια (π.χ. 3)
-                if len(all_results.get(event, {}).get(station, {})) >= 3:
-                    add_station_max_duration_and_min_station_snr(
-                        all_results,
-                        event,
-                        station,
-                        chans.get("minimum_snr", 0),
+                # ✅ Μόλις ολοκληρωθεί ο σταθμός:
+                if len(station_results) > 0:
+                    add_min_station_snr(
+                        station_results,
+                        chans.get("minimum_snr", 0)
                     )
 
-                    print(f'!!! {event}/{station}/{tr.id}: {start_time} → {end_time}, minimum_station_snr: {chans.get("minimum_snr", 0)}, max_station_duration: {all_results[event][station].get("max_station_duration", 0)}')
+                    # Ενημέρωση συνολικού dict
+                    all_results.setdefault(event, {})[station] = station_results
 
-                    # Εγγραφή τώρα που ολοκληρώθηκε ο σταθμός
+                    # Εγγραφή τώρα που τελείωσε ο σταθμός
                     save_json(OUTPUT_JSON, all_results)
-                    print(f"💾 Αποθηκεύτηκαν τα αποτελέσματα για τον σταθμό {station}")
+                    print(f'💾 Αποθηκεύτηκαν τα αποτελέσματα για {event}/{station}: minimum_station_snr={chans.get("minimum_snr", 0)}, duration_time_HHZ:{str(duration_time)}')
 
     print(f"\n✅ Ολοκληρώθηκε η καταγραφή όλων των σταθμών στο: {OUTPUT_JSON}")
 
@@ -357,33 +299,56 @@ def aic_picker(trace_data):
 
 import matplotlib.pyplot as plt
 
-def plot_station_duration_distribution(bin_size: float = 10.0, output_png: str = None):
+def plot_station_duration_distribution(json_path: str = None, bin_size: float = 10.0, output_png: str = None):
     """
     Υπολογίζει και σχεδιάζει την κατανομή (ραβδόγραμμα)
-    των Max Station Duration τιμών από το JSON.
+    των duration_time τιμών ΜΟΝΟ για τα Z κανάλια (π.χ. HHZ, BHZ, EHZ)
+    από το αρχείο PS_boundaries.json.
 
     :param json_path: Πλήρες path προς το PS_boundaries.json
     :param bin_size: Εύρος bin (σε δευτερόλεπτα)
     :param output_png: Αν δοθεί path, σώζει το διάγραμμα σε PNG
     """
-    data = load_json(OUTPUT_JSON)
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    # --- Αν δεν δοθεί path, πάρε το προεπιλεγμένο ---
+    if json_path is None:
+        from main import LOG_DIR
+        json_path = os.path.join(LOG_DIR, "PS_boundaries.json")
+
+    # --- Ανάγνωση δεδομένων ---
+    if not os.path.exists(json_path):
+        print(f"❌ Δεν βρέθηκε το αρχείο: {json_path}")
+        return
+
+    data = load_json(json_path)
     durations = []
 
-    # --- Βήμα 1: Συλλογή όλων των max_station_duration ---
+    # --- Βήμα 1: Συλλογή duration_time μόνο από τα Z κανάλια ---
     for event_name, stations in data.items():
         for station_name, channels in stations.items():
             if not isinstance(channels, dict):
                 continue
-            max_dur = channels.get("max_station_duration")
-            if max_dur is None:
-                continue
-            try:
-                durations.append(float(max_dur))
-            except ValueError:
-                continue
 
+            # Εξέτασε μόνο τα κανάλια που τελειώνουν σε Z
+            for ch_name, ch_info in channels.items():
+                if not isinstance(ch_info, dict):
+                    continue
+                if not ch_name.endswith("Z"):  # π.χ. HHZ, BHZ, EHZ
+                    continue
+
+                dur = ch_info.get("duration_time")
+                if dur is None:
+                    continue
+                try:
+                    durations.append(float(dur))
+                except ValueError:
+                    continue
+
+    # --- Έλεγχος ---
     if not durations:
-        print("❌ Δεν βρέθηκαν τιμές max_station_duration")
+        print("❌ Δεν βρέθηκαν τιμές duration_time για κανάλια Z")
         return
 
     # --- Βήμα 2: Δημιουργία bins ---
@@ -392,18 +357,17 @@ def plot_station_duration_distribution(bin_size: float = 10.0, output_png: str =
 
     # --- Βήμα 3: Σχεδίαση ραβδογράμματος ---
     plt.figure(figsize=(10, 6))
-    plt.hist(durations, bins=bins, color="steelblue", edgecolor="black", alpha=0.8)
+    counts, bins, patches = plt.hist(durations, bins=bins, color="teal", edgecolor="black", alpha=0.8)
 
-    plt.title("Κατανομή Max Station Duration", fontsize=14, fontweight="bold")
-    plt.xlabel("Διάρκεια σταθμού (δευτερόλεπτα)", fontsize=12)
+    plt.title("Κατανομή Duration (μόνο Z κανάλια)", fontsize=14, fontweight="bold")
+    plt.xlabel("Διάρκεια (δευτερόλεπτα)", fontsize=12)
     plt.ylabel("Πλήθος σταθμών", fontsize=12)
     plt.grid(axis="y", linestyle="--", alpha=0.6)
 
-    # Εμφάνιση των labels πάνω από τις μπάρες
-    counts, _, patches = plt.hist(durations, bins=bins)
+    # Προσθήκη labels πάνω από κάθε μπάρα
     for c, p in zip(counts, patches):
         if c > 0:
-            plt.text(p.get_x() + p.get_width()/2, c, f"{int(c)}", ha="center", va="bottom", fontsize=9)
+            plt.text(p.get_x() + p.get_width() / 2, c, f"{int(c)}", ha="center", va="bottom", fontsize=9)
 
     plt.tight_layout()
 
@@ -413,6 +377,7 @@ def plot_station_duration_distribution(bin_size: float = 10.0, output_png: str =
         print(f"💾 Αποθηκεύτηκε το ραβδόγραμμα στο {output_png}")
     else:
         plt.show()
+
 
 # ==========================================================
 if __name__ == "__main__":
