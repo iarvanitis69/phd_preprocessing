@@ -32,15 +32,19 @@ def iter_mseed_files(root: str):
         if "Logs" in dirpath:
             continue
         for fn in filenames:
-            if fn.endswith("_demean_detrend_IC.mseed"):
+            if fn.endswith("_demeanDetrend_IC.mseed"):
                 yield os.path.join(dirpath, fn)
 
 
 def apply_bandpass(stream: Stream, freqmin: float = 0.5, freqmax: float = 45.0, corners: int = 4) -> Stream:
     return stream.copy().filter("bandpass", freqmin=freqmin, freqmax=freqmax, corners=corners, zerophase=True)
 
-
 def process_file(path: str, excluded: dict, output_suffix="_BPF"):
+    new_path = path.replace("_demeanDetrend_IC.mseed", f"_demeanDetrend_IC{output_suffix}.mseed")
+    if os.path.exists(new_path):
+        print(f"⏭️ Ήδη υπάρχει: {new_path} — Παράλειψη.")
+        return
+
     try:
         st = read(path)
     except Exception as e:
@@ -65,7 +69,6 @@ def process_file(path: str, excluded: dict, output_suffix="_BPF"):
             print(f"⚠️ Σφάλμα bandpass {station}: {e}")
 
     if filtered:
-        new_path = path.replace("_demean_detrend_IC.mseed", f"_demean_detrend_IC{output_suffix}.mseed")
         filtered.write(new_path, format="MSEED")
         print(f"✅ Αποθηκεύτηκε: {new_path}")
     else:
