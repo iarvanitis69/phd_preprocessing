@@ -27,29 +27,22 @@ def save_json(path, data):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-def insert_channel_result(db_path, event, station, channel, result):
-    db = load_json(db_path)
-
+def insert_channel_result(db: dict, event: str, station: str, channel: str, result: dict):
+    """
+    Εισάγει ή ενημερώνει ένα κανάλι μέσα στο προσωρινό dict 'db',
+    χωρίς να γράφει στο δίσκο.
+    """
     ev = db.setdefault(event, {})
     st = ev.setdefault(station, {})
     st[channel] = result
 
-    save_json(db_path, db)
 
-def add_station_max_duration_and_min_station_snr(json_path: str, event_name: str, station_name: str, minimun_station_snr:float):
+def add_station_max_duration_and_min_station_snr(db: dict, event_name: str, station_name: str, minimun_station_snr: float):
     """
-    Διαβάζει ένα JSON αρχείο (π.χ. PS_boundaries.json),
-    εντοπίζει τον συγκεκριμένο σταθμό, υπολογίζει το μέγιστο duration_time
-    και προσθέτει το κλειδί 'Max Station Duration' στο ίδιο επίπεδο.
-
-    :param json_path: Πλήρες path προς το αρχείο JSON
-    :param event_name: Το όνομα του event (π.χ. '20250209T152330_36.60_25.66_7.0km_M3.2')
-    :param station_name: Το όνομα του σταθμού (π.χ. 'HL.AMGA')
+    Υπολογίζει τη μέγιστη διάρκεια και το ελάχιστο SNR
+    και τα προσθέτει στο προσωρινό dict 'db'.
     """
-    data = load_json(json_path)
-
-    # Έλεγχος ότι υπάρχει το event και ο σταθμός
-    event_dict = data.get(event_name)
+    event_dict = db.get(event_name)
     if event_dict is None:
         print(f"❌ Δεν βρέθηκε το event: {event_name}")
         return
@@ -59,7 +52,6 @@ def add_station_max_duration_and_min_station_snr(json_path: str, event_name: str
         print(f"❌ Δεν βρέθηκε ο σταθμός: {station_name}")
         return
 
-    # Υπολογισμός μέγιστης διάρκειας από τα κανάλια
     max_duration = 0.0
     for channel, info in station_dict.items():
         if isinstance(info, dict) and "duration_time" in info:
@@ -70,16 +62,11 @@ def add_station_max_duration_and_min_station_snr(json_path: str, event_name: str
             except ValueError:
                 continue
 
-    # Προσθήκη του νέου πεδίου
     station_dict["max_station_duration"] = round(max_duration, 3)
     station_dict["minimun_station_snr"] = round(minimun_station_snr, 3)
 
-    # Ενημέρωση του JSON
     event_dict[station_name] = station_dict
-    data[event_name] = event_dict
-    save_json(json_path, data)
-
-    print(f"✅ Προστέθηκε 'στο {station_name} ({event_name}) Max Station Duration': {max_duration:.3f}")
+    db[event_name] = event_dict
 
 
 def extract_segment_from_mseed_file(input_path: str, start_index: int, duration_samples: int):
@@ -124,11 +111,44 @@ from typing import List, Set, Tuple
 # ==========================================================
 def find_peak_segmentation():
     import os
+    import json
     import numpy as np
     from obspy import read
     from scipy.signal import find_peaks
     from main import LOG_DIR, BASE_DIR
 
+    # --- Inline βελτιωμένες συναρτήσεις χωρίς I/O ---
+    def insert_channel_result(db: dict, event: str, station: str, channel: str, result: dict):
+        ev = db.setdefault(event, {})
+        st = ev.setdefault(station, {})
+        st[channel] = result
+
+    def add_station_max_duration_and_min_station_snr(db: dict, event_name: str, station_name: str, minimun_station_snr: float):
+        event_dict = db.get(event_name)
+        if event_dict is None:
+            print(f"❌ Δεν βρέθηκε το event: {event_name}")
+            return
+        station_dict = event_dict.get(station_name)
+        if station_dict is None:
+            print(f"❌ Δεν βρέθηκε ο σταθμός: {station_name}")
+            return
+
+        max_duration = 0.0
+        for channel, info in station_dict.items():
+            if isinstance(info, dict) and "duration_time" in info:
+                try:
+                    dur = float(info["duration_time"])
+                    if dur > max_duration:
+                        max_duration = dur
+                except ValueError:
+                    continue
+
+        station_dict["max_station_duration"] = round(max_duration, 3)
+        station_dict["minimun_station_snr"] = round(minimun_station_snr, 3)
+        event_dict[station_name] = station_dict
+        db[event_name] = event_dict
+
+    # --- Paths ---
     OUTPUT_JSON = os.path.join(LOG_DIR, "PS_boundaries.json")
     os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -144,6 +164,7 @@ def find_peak_segmentation():
         return set()
 
     events_dict = snr_data.get("Events", {})
+    all_results = {}
 
     for year, events in events_dict.items():
         for event, stations in events.items():
@@ -151,6 +172,9 @@ def find_peak_segmentation():
                 year_path = os.path.join(BASE_DIR, year)
                 event_path = os.path.join(year_path, event)
                 station_path = os.path.join(event_path, station)
+
+                # προσωρινό dict για αυτόν το σταθμό
+                station_results = {}
 
                 for root, _, channels in os.walk(station_path):
                     if "info.json" in root:
@@ -173,7 +197,6 @@ def find_peak_segmentation():
                                     print(f"⚠️ AIC αποτυχία για {tr.id}")
                                     continue
 
-                                # --- Κανονικοποίηση ---
                                 abs_data = np.abs(data)
                                 max_val = np.max(abs_data)
                                 if max_val == 0:
@@ -181,21 +204,13 @@ def find_peak_segmentation():
                                     continue
                                 norm_data = abs_data / max_val
 
-                                # --- Εύρεση αρχής ---
                                 start_time = tr.stats.starttime + aic_idx / sr
 
-                                # --- Αναζήτηση peaks μετά το AIC ---
-                                search_segment = norm_data[aic_idx + 1:]
-                                mean_val = np.mean(search_segment)
-
-                                # Εφάρμοσε buffer 0.5s μετά το AIC για να αποφύγεις θόρυβο
+                                # --- Buffer 0.5s μετά το AIC ---
                                 buffer_samples = int(0.5 * sr)
                                 search_segment = norm_data[aic_idx + buffer_samples:]
-
-                                # Ορισμός threshold πιο αυστηρού (π.χ. 20% της μέγιστης τιμής)
                                 threshold = 0.2 * np.max(search_segment)
 
-                                # Εύρεση peaks με ελάχιστη απόσταση 0.3s μεταξύ τους
                                 peaks, properties = find_peaks(
                                     search_segment,
                                     height=threshold,
@@ -206,14 +221,11 @@ def find_peak_segmentation():
                                 if len(peaks) == 0:
                                     pick_idx = int(aic_idx + np.argmax(search_segment))
                                 else:
-                                    # Διάλεξε το πιο υψηλό peak, όχι το πρώτο
                                     main_peak = peaks[np.argmax(properties["peak_heights"])]
                                     pick_idx = aic_idx + buffer_samples + main_peak
 
                                 pick_time = tr.stats.starttime + pick_idx / sr
-                                pick_ampl = float(norm_data[pick_idx])  # normalized amplitude
-
-                                # --- Ορισμός τέλους τμήματος ---
+                                pick_ampl = float(norm_data[pick_idx])
                                 end_idx = 2 * pick_idx - aic_idx
                                 end_time = tr.stats.starttime + end_idx / sr
                                 duration_samples = int(2 * (pick_idx - aic_idx))
@@ -222,9 +234,9 @@ def find_peak_segmentation():
                                 ch_id = tr.id.split('.')[-1]
 
                                 insert_channel_result(
-                                    OUTPUT_JSON,
-                                    os.path.basename(event_path),
-                                    os.path.basename(station_path),
+                                    all_results,
+                                    event,
+                                    station,
                                     ch_id,
                                     {
                                         "start_idx": int(aic_idx),
@@ -239,21 +251,25 @@ def find_peak_segmentation():
                                     },
                                 )
 
-                                print(f"✅ {os.path.basename(event_path)}/{os.path.basename(station_path)}/{tr.id}: {start_time} → {end_time}")
+                                print(f"✅ {event}/{station}/{tr.id}: {start_time} → {end_time}")
 
                             except Exception as e:
-                                print(f"⚠️ Σφάλμα στο {os.path.basename(event_path)}/{os.path.basename(station_path)}/{tr.id}: {e}")
+                                print(f"⚠️ Σφάλμα στο {event}/{station}/{tr.id}: {e}")
 
-                # --- Ενημέρωση SNR και διάρκειας ---
-                add_station_max_duration_and_min_station_snr(
-                    OUTPUT_JSON,
-                    os.path.basename(event_path),
-                    os.path.basename(station_path),
-                    chans.get("minimum_snr", 0),
-                )
+                # Αν συμπληρώθηκαν όλα τα κανάλια (π.χ. 3)
+                if len(all_results.get(event, {}).get(station, {})) >= 3:
+                    add_station_max_duration_and_min_station_snr(
+                        all_results,
+                        event,
+                        station,
+                        chans.get("minimum_snr", 0),
+                    )
 
-    print(f"\n💾 Αποθηκεύτηκαν στο: {OUTPUT_JSON}")
+                    # Εγγραφή τώρα που ολοκληρώθηκε ο σταθμός
+                    save_json(OUTPUT_JSON, all_results)
+                    print(f"💾 Αποθηκεύτηκαν τα αποτελέσματα για τον σταθμό {station}")
 
+    print(f"\n✅ Ολοκληρώθηκε η καταγραφή όλων των σταθμών στο: {OUTPUT_JSON}")
 
 # ==========================================================
 # ✅ ΦΑΣΗ 2: Δημιουργία αποσπασμάτων με σταθερό duration
