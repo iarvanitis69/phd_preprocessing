@@ -299,22 +299,20 @@ def aic_picker(trace_data):
 
 import matplotlib.pyplot as plt
 
-def plot_station_duration_distribution(json_path: str = None, bin_size: float = 10.0, output_png: str = None):
+def plot_station_duration_distribution(json_path: str = None, bin_size: float = 10.0):
     """
     Υπολογίζει και σχεδιάζει την κατανομή (ραβδόγραμμα)
     των duration_time τιμών ΜΟΝΟ για τα Z κανάλια (π.χ. HHZ, BHZ, EHZ)
-    από το αρχείο PS_boundaries.json.
-
-    :param json_path: Πλήρες path προς το PS_boundaries.json
-    :param bin_size: Εύρος bin (σε δευτερόλεπτα)
-    :param output_png: Αν δοθεί path, σώζει το διάγραμμα σε PNG
+    από το αρχείο PS_boundaries.json και το αποθηκεύει στο Logs/station-duration-distribution.png
     """
+    import os
     import numpy as np
     import matplotlib.pyplot as plt
+    from utils import load_json
+    from main import LOG_DIR
 
     # --- Αν δεν δοθεί path, πάρε το προεπιλεγμένο ---
     if json_path is None:
-        from main import LOG_DIR
         json_path = os.path.join(LOG_DIR, "PS_boundaries.json")
 
     # --- Ανάγνωση δεδομένων ---
@@ -325,17 +323,16 @@ def plot_station_duration_distribution(json_path: str = None, bin_size: float = 
     data = load_json(json_path)
     durations = []
 
-    # --- Βήμα 1: Συλλογή duration_time μόνο από τα Z κανάλια ---
+    # --- Βήμα 1: Συλλογή duration_time μόνο από Z κανάλια ---
     for event_name, stations in data.items():
         for station_name, channels in stations.items():
             if not isinstance(channels, dict):
                 continue
 
-            # Εξέτασε μόνο τα κανάλια που τελειώνουν σε Z
             for ch_name, ch_info in channels.items():
                 if not isinstance(ch_info, dict):
                     continue
-                if not ch_name.endswith("Z"):  # π.χ. HHZ, BHZ, EHZ
+                if not ch_name.endswith("Z"):  # Μόνο τα Z κανάλια (π.χ. HHZ)
                     continue
 
                 dur = ch_info.get("duration_time")
@@ -346,7 +343,6 @@ def plot_station_duration_distribution(json_path: str = None, bin_size: float = 
                 except ValueError:
                     continue
 
-    # --- Έλεγχος ---
     if not durations:
         print("❌ Δεν βρέθηκαν τιμές duration_time για κανάλια Z")
         return
@@ -371,13 +367,13 @@ def plot_station_duration_distribution(json_path: str = None, bin_size: float = 
 
     plt.tight_layout()
 
-    # --- Βήμα 4: Αποθήκευση ή εμφάνιση ---
-    if output_png:
-        plt.savefig(output_png, dpi=200)
-        print(f"💾 Αποθηκεύτηκε το ραβδόγραμμα στο {output_png}")
-    else:
-        plt.show()
+    # --- Βήμα 4: Αποθήκευση στο Logs ---
+    output_png = os.path.join(LOG_DIR, "station-duration-distribution.png")
+    plt.savefig(output_png, dpi=200)
+    print(f"💾 Αποθηκεύτηκε το ραβδόγραμμα στο {output_png}")
 
+    # --- Προαιρετική εμφάνιση ---
+    plt.show()
 
 # ==========================================================
 if __name__ == "__main__":
