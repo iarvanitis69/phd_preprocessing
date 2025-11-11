@@ -52,7 +52,7 @@ def compute_edges_middle_max(trace: Trace):
 
 def compute_snr(edge_max: float, middle_max: float) -> float:
     eps = 1e-12
-    return float(middle_max / (edge_max + eps))
+    return round(float(middle_max / (edge_max + eps)),2)
 
 def load_json(path: str) -> dict:
     if os.path.exists(path):
@@ -191,7 +191,6 @@ def find_snr():
         for event_name, event_path in iter_event_dirs(year_path):
             for station_name, station_path in iter_station_dirs(event_path):
                 process_station(station_path, year, event_name, station_name, snr_db, excluded)
-                #save_json(snr_file, snr_db)
                 save_json_atomic(snr_file, snr_db)
 
 if __name__ == "__main__":

@@ -26,20 +26,6 @@ def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-
-def insert_channel_result(db: dict, event: str, station: str, channel: str, result: dict):
-    """
-    Εισάγει ή ενημερώνει ένα κανάλι μέσα στο προσωρινό dict 'db',
-    χωρίς να γράφει στο δίσκο.
-    """
-    ev = db.setdefault(event, {})
-    st = ev.setdefault(station, {})
-    st[channel] = result
-
-
-
-
-
 def extract_segment_from_mseed_file(input_path: str, start_index: int, duration_samples: int):
     try:
         st = read(input_path)
@@ -88,7 +74,7 @@ def find_peak_segmentation():
     from scipy.signal import find_peaks
     from main import LOG_DIR, BASE_DIR
 
-    # --- Inline βελτιωμένες συναρτήσεις χωρίς I/O ---
+    # --- Inline helper για SNR ---
     def add_min_station_snr(station_results: dict, minimum_station_snr: float):
         max_duration = 0.0
         for ch, info in station_results.items():
@@ -116,24 +102,42 @@ def find_peak_segmentation():
         print(f"⚠️ Σφάλμα κατά την ανάγνωση του snr.json: {e}")
         return set()
 
-    events_dict = snr_data.get("Events", {})
-    all_results = {}
+    # Αν υπάρχει ήδη το PS_boundaries.json, φόρτωσέ το
+    if os.path.exists(OUTPUT_JSON):
+        try:
+            all_results = load_json(OUTPUT_JSON)
+        except Exception:
+            all_results = {}
+    else:
+        all_results = {}
 
+    events_dict = snr_data.get("Events", {})
+
+    # --- Κύριος βρόχος ---
     for year, events in events_dict.items():
         for event, stations in events.items():
             for station, chans in stations.items():
+
+                # ➤ Έλεγχος αν υπάρχει ήδη
+                if (
+                    str(year) in all_results
+                    and event in all_results[str(year)]
+                    and station in all_results[str(year)][event]
+                ):
+                    print(f"⏭️ Παράλειψη: {year}/{event}/{station} υπάρχει ήδη")
+                    continue
+
                 year_path = os.path.join(BASE_DIR, year)
                 event_path = os.path.join(year_path, event)
                 station_path = os.path.join(event_path, station)
-
-                # προσωρινό dict μόνο για αυτόν τον σταθμό
                 station_results = {}
 
                 for root, _, files in os.walk(station_path):
                     if "info.json" in root:
                         continue
                     for fname in files:
-                        if not fname.endswith("_demeanDetrend_IC_BPF.mseed") or not "HHZ" in fname:
+                        # ➤ Μόνο τα Z κανάλια
+                        if not fname.endswith("_demeanDetrend_IC_BPF.mseed") or "HHZ" not in fname:
                             continue
                         try:
                             st = read(os.path.join(station_path, fname))
@@ -182,7 +186,7 @@ def find_peak_segmentation():
                                 duration_samples = int(2 * (pick_idx - aic_idx))
                                 duration_time = duration_samples / sr
 
-                                ch_id = tr.id.split('.')[-1]
+                                ch_id = tr.id.split('.')[-1]  # HHZ
 
                                 station_results[ch_id] = {
                                     "start_idx": int(aic_idx),
@@ -197,78 +201,130 @@ def find_peak_segmentation():
                                 }
 
                             except Exception as e:
-                                print(f"⚠️ Σφάλμα στο {event}/{station}/{tr.id}: {e}")
+                                print(f"⚠️ Σφάλμα στο {year}/{event}/{station}/{tr.id}: {e}")
 
                 # ✅ Μόλις ολοκληρωθεί ο σταθμός:
                 if len(station_results) > 0:
-                    add_min_station_snr(
-                        station_results,
-                        chans.get("minimum_snr", 0)
-                    )
+                    add_min_station_snr(station_results, chans.get("minimum_snr", 0))
 
-                    # Ενημέρωση συνολικού dict
-                    all_results.setdefault(event, {})[station] = station_results
+                    # --- Ενημέρωση συνολικού dict με σωστή ιεραρχία ---
+                    year_dict = all_results.setdefault(str(year), {})
+                    event_dict = year_dict.setdefault(event, {})
+                    event_dict[station] = station_results
 
-                    # Εγγραφή τώρα που τελείωσε ο σταθμός
+                    # --- Εγγραφή στο αρχείο ---
                     save_json(OUTPUT_JSON, all_results)
-                    print(f'💾 Αποθηκεύτηκαν τα αποτελέσματα για {event}/{station}: minimum_station_snr={chans.get("minimum_snr", 0)}, duration_time_HHZ:{str(duration_time)}')
+
+                    print(
+                        f'💾 Αποθηκεύτηκαν τα αποτελέσματα για {year}/{event}/{station}: '
+                        f'minimum_station_snr={chans.get("minimum_snr", 0)}, duration_time_HHZ={duration_time:.2f}'
+                    )
 
     print(f"\n✅ Ολοκληρώθηκε η καταγραφή όλων των σταθμών στο: {OUTPUT_JSON}")
 
 # ==========================================================
 # ✅ ΦΑΣΗ 2: Δημιουργία αποσπασμάτων με σταθερό duration
 # ==========================================================
-def create_peak_segmentation_files():
-    from main import LOG_DIR, BASE_DIR
-    OUTPUT_JSON = os.path.join(LOG_DIR, "event_boundaries.json")
-    db = load_json(OUTPUT_JSON)
+def create_peak_segmentation_files(min_snr: float, min_duration: float, max_duration: float):
+    """
+    Δημιουργεί PS αρχεία (κομμένα segments) από τα BPF αρχεία,
+    με βάση τα κριτήρια:
+      - SNR >= min_snr
+      - min_duration <= duration_time <= max_duration
 
-    max_duration = float(db.get("maximum_duration_time", 0.0))
-    if max_duration <= 0:
-        print("❌ Δεν βρέθηκε έγκυρο μέγιστο duration.")
+    Τα νέα αρχεία αποθηκεύονται μέσα στον φάκελο κάθε σταθμού,
+    σε υποφάκελο τύπου:
+      SNRgt{min_snr}_DurBtwn{min_duration}_{max_duration}
+    """
+    import os
+    from obspy import read
+    from main import LOG_DIR, BASE_DIR
+
+    # --- Paths ---
+    PS_JSON = os.path.join(LOG_DIR, "PS_boundaries.json")
+    if not os.path.exists(PS_JSON):
+        print(f"❌ Δεν βρέθηκε το {PS_JSON}")
         return
 
-    duration_samples = None
+    db = load_json(PS_JSON)
 
-    for root, _, files in os.walk(BASE_DIR):
-        if "Logs" in root:
-            continue
-        for file in files:
-            if not file.endswith("_demeanDetrend_IC_BPF_PS.mseed"):
-                continue
-
-            file_path = os.path.join(root, file)
-            try:
-                st = read(file_path)
-            except Exception as e:
-                print(f"⚠️ Σφάλμα ανάγνωσης {file_path}: {e}")
-                continue
-
-            for tr in st:
-                event_name = os.path.normpath(file_path).split(os.sep)[-3]
-                station_name = os.path.normpath(file_path).split(os.sep)[-2]
-                ch_id = tr.id.split('.')[-1]
-
-                start_idx = int(db.get(event_name, {})
-                                   .get(station_name, {})
-                                   .get(ch_id, {})
-                                   .get("start_idx", -1))
-
-                if start_idx < 0:
+    # --- Βρόχος για κάθε event/station/channel ---
+    for year, events in db.items():
+        for event_name, stations in events.items():
+            for station_name, channels in stations.items():
+                if not isinstance(channels, dict):
                     continue
 
-                sr = tr.stats.sampling_rate
-                if duration_samples is None:
-                    duration_samples = int(round(max_duration * sr))
+                # Έλεγχος SNR
+                station_snr = channels.get("minimum_station_snr", 0)
+                if station_snr < min_snr:
+                    continue
 
-                output_path = extract_segment_from_mseed_file(
-                    input_path=file_path,
-                    start_index=start_idx,
-                    duration_samples=duration_samples
+                # Εύρεση path σταθμού
+                station_path = os.path.join(BASE_DIR, str(year), event_name, station_name)
+                if not os.path.exists(station_path):
+                    continue
+
+                # Δημιουργία υποφακέλου εξόδου μέσα στο station
+                output_dir = os.path.join(
+                    station_path, f"SNRgt{min_snr}_DurBtwn{int(min_duration)}_{int(max_duration)}"
                 )
+                os.makedirs(output_dir, exist_ok=True)
 
-                if output_path:
-                    print(f"✅ Δημιουργήθηκε: {output_path}")
+                # Έλεγχος καναλιών
+                for ch_name, ch_info in channels.items():
+                    if not isinstance(ch_info, dict) or "duration_time" not in ch_info:
+                        continue
+
+                    try:
+                        dur = float(ch_info["duration_time"])
+                    except ValueError:
+                        continue
+
+                    # --- Έλεγχος ορίων διάρκειας ---
+                    if not (min_duration <= dur <= max_duration):
+                        continue
+
+                    start_idx = ch_info.get("start_idx", -1)
+                    if start_idx < 0:
+                        continue
+
+                    # Εντοπισμός αρχικού αρχείου
+                    orig_file = os.path.join(
+                        station_path,
+                        f"{station_name}..{ch_name}__{event_name}_demeanDetrend_IC_BPF.mseed"
+                    )
+
+                    if not os.path.exists(orig_file):
+                        print(f"⚠️ Δεν βρέθηκε το αρχείο: {orig_file}")
+                        continue
+
+                    # --- Ανάγνωση waveform και υπολογισμός samples ---
+                    try:
+                        st = read(orig_file)
+                        sr = st[0].stats.sampling_rate
+                        duration_samples = int(round(dur * sr))
+                    except Exception as e:
+                        print(f"⚠️ Σφάλμα ανάγνωσης {orig_file}: {e}")
+                        continue
+
+                    # --- Δημιουργία αποκομμένου αρχείου ---
+                    output_path = extract_segment_from_mseed_file(
+                        input_path=orig_file,
+                        start_index=start_idx,
+                        duration_samples=duration_samples,
+                        output_dir=output_dir
+                    )
+
+                    if output_path:
+                        print(
+                            f"✅ Δημιουργήθηκε: {output_path} "
+                            f"(SNR={station_snr:.2f}, duration={dur:.2f}s)"
+                        )
+
+    print(f"\n✅ Ολοκληρώθηκε η δημιουργία PS αρχείων για SNR ≥ {min_snr}, "
+          f"διάρκεια μεταξύ {min_duration}–{max_duration} sec.")
+
 
 def aic_picker(trace_data):
     """
