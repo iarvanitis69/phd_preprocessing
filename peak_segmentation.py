@@ -265,6 +265,8 @@ def find_peak_segmentation():
                         chans.get("minimum_snr", 0),
                     )
 
+                    print(f'!!! {event}/{station}/{tr.id}: {start_time} → {end_time}, minimum_station_snr: {chans.get("minimum_snr", 0)}, max_station_duration: {all_results[event][station].get("max_station_duration", 0)}')
+
                     # Εγγραφή τώρα που ολοκληρώθηκε ο σταθμός
                     save_json(OUTPUT_JSON, all_results)
                     print(f"💾 Αποθηκεύτηκαν τα αποτελέσματα για τον σταθμό {station}")
