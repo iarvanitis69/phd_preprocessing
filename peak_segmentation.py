@@ -150,7 +150,7 @@ def find_peak_segmentation():
                         try:
                             st = read(os.path.join(station_path, fname))
                         except Exception as e:
-                            print(f"⚠️ Αποτυχία ανάγνωσης {fname}: {e}")
+                            print(f"⚠️ Αποτυχία ανάγνωσης {year}/{event}/{station} {fname}: {e}")
                             continue
 
                         for tr in st:
@@ -161,14 +161,14 @@ def find_peak_segmentation():
                                 # --- Βήμα 1: Εύρεση AIC έναρξης ---
                                 aic_idx, _ = aic_picker(data)
                                 if aic_idx is None:
-                                    print(f"⚠️ AIC αποτυχία για {tr.id}")
+                                    print(f"⚠️ AIC αποτυχία για {year}/{event}/{station} {tr.id}")
                                     continue
 
                                 # --- Βήμα 2: Bandpass 1–20 Hz ---
                                 try:
                                     filtered = bandpass_filter(data, sr, 1.0, 20.0)
                                 except Exception as e:
-                                    print(f"⚠️ Σφάλμα στο bandpass {tr.id}: {e}")
+                                    print(f"⚠️ Σφάλμα στο bandpass {year}/{event}/{station} {tr.id}: {e}")
                                     continue
 
                                 # --- Βήμα 3: Hilbert envelope ---
@@ -275,6 +275,7 @@ def create_peak_segmentation_files(min_snr: float, min_duration: float, max_dura
                     continue
 
                 # Έλεγχος SNR
+
                 station_snr = channels.get("minimum_station_snr", 0)
                 if station_snr < min_snr:
                     continue
