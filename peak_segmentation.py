@@ -199,8 +199,8 @@ def find_peak_segmentation():
                                 pick_time = tr.stats.starttime + pick_idx / sr
                                 end_idx = 2 * pick_idx - aic_idx
                                 end_time = tr.stats.starttime + end_idx / sr
-                                duration_samples = int(2 * (pick_idx - aic_idx))
-                                duration_time = duration_samples / sr
+                                peak_segment_duration_samples = int(2 * (pick_idx - aic_idx))
+                                peak_segment_duration_time = peak_segment_duration_samples / sr
 
                                 pick_ampl = float(norm_env[pick_idx])
                                 ch_id = tr.id.split('.')[-1]
@@ -232,8 +232,8 @@ def find_peak_segmentation():
                                     "end_of_signal_time": str(end_of_signal_time),
                                     "event_duration_idx":int(end_of_signal_index)-int(aic_idx),
                                     "event_duration_time":(int(end_of_signal_index)-int(aic_idx))/sr,
-                                    "total_duration_nof_samples": duration_samples,
-                                    "total_duration_time": f"{duration_time:.2f}",
+                                    "peak_segment_duration_nof_samples": peak_segment_duration_samples,
+                                    "peak_segment_duration_time": f"{peak_segment_duration_time:.2f}",
                                 }
 
                             except Exception as e:
@@ -251,7 +251,7 @@ def find_peak_segmentation():
 
                     print(
                         f'💾 Αποθηκεύτηκε {year}/{eventJson}/{stationJson}: '
-                        f'SNR={station_snr}, duration_time_HHZ={duration_time:.2f}, '
+                        f'SNR={station_snr}, peak_segment_duration_time_HHZ={peak_segment_duration_time:.2f}, '
                         f'end_of_signal_time={end_of_signal_time}'
                     )
 
@@ -356,7 +356,7 @@ def create_peak_segmentation_files(min_snr: float, min_duration: float, max_dura
                     if output_path:
                         print(
                             f"✅ Δημιουργήθηκε: {output_path} "
-                            f"(SNR={station_snr:.2f}, duration={dur:.2f}s)"
+                            f"(SNR={float(station_snr):.2f}, duration={dur:.2f}s)"
                         )
 
     print(f"\n✅ Ολοκληρώθηκε η δημιουργία PS αρχείων για SNR ≥ {min_snr}, "
@@ -392,10 +392,10 @@ def aic_picker(trace_data):
 
 import matplotlib.pyplot as plt
 
-def plot_station_duration_distribution(json_path: str = None, bin_size: float = 10.0):
+def plot_peak_segmentation_duration_distribution(bin_size: float = 10.0):
     """
     Υπολογίζει και σχεδιάζει την κατανομή (ραβδόγραμμα)
-    των duration_time τιμών ΜΟΝΟ για τα Z κανάλια (π.χ. HHZ, BHZ, EHZ)
+    των total_duration_time τιμών ΜΟΝΟ για τα Z κανάλια (π.χ. HHZ, BHZ, EHZ)
     από το αρχείο PS_boundaries.json και το αποθηκεύει στο Logs/station-duration-distribution.png
     """
     import os
@@ -403,11 +403,8 @@ def plot_station_duration_distribution(json_path: str = None, bin_size: float = 
     import matplotlib.pyplot as plt
     from main import LOG_DIR
 
-    # --- Αν δεν δοθεί path, πάρε το προεπιλεγμένο ---
-    if json_path is None:
-        json_path = os.path.join(LOG_DIR, "PS_boundaries.json")
-
-    # --- Ανάγνωση δεδομένων ---
+    # --- Ανάγνωση αρχείου ---
+    json_path = os.path.join(LOG_DIR, "PS_boundaries.json")
     if not os.path.exists(json_path):
         print(f"❌ Δεν βρέθηκε το αρχείο: {json_path}")
         return
@@ -415,39 +412,42 @@ def plot_station_duration_distribution(json_path: str = None, bin_size: float = 
     data = load_json(json_path)
     durations = []
 
-    # --- Βήμα 1: Συλλογή duration_time μόνο από Z κανάλια ---
-    for event_name, stations in data.items():
-        for station_name, channels in stations.items():
-            if not isinstance(channels, dict):
-                continue
-
-            for ch_name, ch_info in channels.items():
-                if not isinstance(ch_info, dict):
-                    continue
-                if not ch_name.endswith("Z"):  # Μόνο τα Z κανάλια (π.χ. HHZ)
+    # --- Διασχίζουμε τη δομή: έτος → event → σταθμό → κανάλι ---
+    for year, events in data.items():
+        for event_name, stations in events.items():
+            for station_name, channels in stations.items():
+                if not isinstance(channels, dict):
                     continue
 
-                dur = ch_info.get("duration_time")
-                if dur is None:
-                    continue
-                try:
-                    durations.append(float(dur))
-                except ValueError:
-                    continue
+                # Μόνο τα κανάλια Z (HHZ, BHZ, EHZ)
+                for ch_name, ch_info in channels.items():
+                    if not isinstance(ch_info, dict):
+                        continue
+                    if not ch_name.endswith("Z"):
+                        continue
+
+                    dur = ch_info.get("total_duration_time")
+                    if dur is None:
+                        continue
+
+                    try:
+                        durations.append(float(dur))
+                    except ValueError:
+                        continue
 
     if not durations:
-        print("❌ Δεν βρέθηκαν τιμές duration_time για κανάλια Z")
+        print("❌ Δεν βρέθηκαν τιμές total_duration_time για κανάλια Z")
         return
 
-    # --- Βήμα 2: Δημιουργία bins ---
+    # --- Bins ---
     max_value = max(durations)
     bins = np.arange(0, max_value + bin_size, bin_size)
 
-    # --- Βήμα 3: Σχεδίαση ραβδογράμματος ---
+    # --- Ραβδόγραμμα ---
     plt.figure(figsize=(10, 6))
     counts, bins, patches = plt.hist(durations, bins=bins, color="teal", edgecolor="black", alpha=0.8)
 
-    plt.title("Κατανομή Duration (μόνο Z κανάλια)", fontsize=14, fontweight="bold")
+    plt.title("Distribution Peak Segmentation Duration (μόνο Z κανάλια)", fontsize=14, fontweight="bold")
     plt.xlabel("Διάρκεια (δευτερόλεπτα)", fontsize=12)
     plt.ylabel("Πλήθος σταθμών", fontsize=12)
     plt.grid(axis="y", linestyle="--", alpha=0.6)
@@ -459,15 +459,101 @@ def plot_station_duration_distribution(json_path: str = None, bin_size: float = 
 
     plt.tight_layout()
 
-    # --- Βήμα 4: Αποθήκευση στο Logs ---
+    # --- Αποθήκευση ---
     output_png = os.path.join(LOG_DIR, "station-duration-distribution.png")
     plt.savefig(output_png, dpi=200)
     print(f"💾 Αποθηκεύτηκε το ραβδόγραμμα στο {output_png}")
 
-    # --- Προαιρετική εμφάνιση ---
     plt.show()
+
+def plot_snr_distribution(bin_size: float = 3.0):
+    """
+    Υπολογίζει και σχεδιάζει την κατανομή (ραβδόγραμμα)
+    των minimum_station_snr τιμών από το αρχείο PS_boundaries.json
+    και το αποθηκεύει στο Logs/snr-distribution.png
+    """
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from main import LOG_DIR
+
+    # --- Διαδρομή αρχείου ---
+    json_path = os.path.join(LOG_DIR, "PS_boundaries.json")
+
+    # --- Έλεγχος ύπαρξης ---
+    if not os.path.exists(json_path):
+        print(f"❌ Δεν βρέθηκε το αρχείο: {json_path}")
+        return
+
+    # --- Ανάγνωση δεδομένων ---
+    data = load_json(json_path)
+    snr_values = []
+
+    # --- Δομή: έτος → γεγονός → σταθμός ---
+    for year, events in data.items():
+        if not isinstance(events, dict):
+            continue
+        for event_name, stations in events.items():
+            if not isinstance(stations, dict):
+                continue
+            for station_name, station_info in stations.items():
+                if not isinstance(station_info, dict):
+                    continue
+
+                # Αν υπάρχει τιμή minimum_station_snr στο επίπεδο σταθμού
+                min_snr = station_info.get("minimum_station_snr")
+                if min_snr is None:
+                    continue
+
+                try:
+                    snr_values.append(float(min_snr))
+                except (TypeError, ValueError):
+                    continue
+
+    if not snr_values:
+        print("❌ Δεν βρέθηκαν τιμές minimum_station_snr στο PS_boundaries.json")
+        return
+
+    # --- Δημιουργία bins ---
+    max_value = max(snr_values)
+    bins = np.arange(0, max_value + bin_size, bin_size)
+
+    # --- Ραβδόγραμμα ---
+    plt.figure(figsize=(10, 6))
+    counts, bins, patches = plt.hist(
+        snr_values, bins=bins, color="orange", edgecolor="black", alpha=0.8
+    )
+
+    plt.title("Distribution SNR per station", fontsize=14, fontweight="bold")
+    plt.xlabel("SNR (τιμή ανά σταθμό)", fontsize=12)
+    plt.ylabel("Πλήθος σταθμών", fontsize=12)
+    plt.grid(axis="y", linestyle="--", alpha=0.6)
+
+    # Προσθήκη labels πάνω από κάθε μπάρα
+    for c, p in zip(counts, patches):
+        if c > 0:
+            plt.text(
+                p.get_x() + p.get_width() / 2,
+                c,
+                f"{int(c)}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+            )
+
+    plt.tight_layout()
+
+    # --- Αποθήκευση ---
+    output_png = os.path.join(LOG_DIR, "snr-distribution.png")
+    plt.savefig(output_png, dpi=200)
+    print(f"💾 Αποθηκεύτηκε το ραβδόγραμμα στο {output_png}")
+
+    plt.show()
+
 
 # ==========================================================
 if __name__ == "__main__":
-    find_peak_segmentation()
+    #find_peak_segmentation()
+    plot_peak_segmentation_duration_distribution()
+    #plot_snr_distribution()
     #create_peak_segmentation_files()

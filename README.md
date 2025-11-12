@@ -352,7 +352,9 @@ channel. These computed parameters are subsequently recorded in a JSON file for 
 In the second stage, the function create_peak_segmentation() files is executed, which takes as input the 
 *_dmean_detrend_IC_BPF.mseed files and produces as output the *_dmean_detrend_IC_BPF_PS.mseed files.
 
-![img.png](images/peakSegmentation.png)
+![img.png](images/peak_segmentation_duration_distribution.png)
+
+![img.png](images/snr_distribution.png)
 
 
 ### convert_ΝΖΕ_to_LQT.py

@@ -172,7 +172,7 @@ def process_station(station_path, year, event_name, station_name, snr_db, exclud
 
     required_channels = {"HHE", "HHN", "HHZ"}
     if required_channels.issubset(channel_results):
-        min_snr = float(min(channel_results[ch] for ch in required_channels))
+        min_snr = round(float(min(channel_results[ch] for ch in required_channels)),2)
         snr_db["Events"][year][event_name][station_name]["minimum_snr"] = min_snr
         print(f"✅ Υπολογίστηκε minimum_snr για {event_name}/{station_name}: {min_snr:.3f}")
 
