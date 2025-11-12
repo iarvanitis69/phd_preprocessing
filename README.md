@@ -305,16 +305,50 @@ cutoff frequency set to 1 Hz. The function filter_all_files() takes as input the
 provides as output the files *_demeanDetrend_IC_BPF.mseed file
 
 ### peak_segmentation.py
-The next step is to determine the peak segmentation of the signal. To achieve this, we first identify the onset point 
-of the seismic wave using the Akaike Information Criterion (AIC) algorithm, and then locate the peak, defined as the 
-absolute maximum amplitude of the signal.
-We then measure the time duration between the onset and the peak, and extend the window by the same duration beyond the 
-peak, until the signal starts to decay.
-This extracted segment represents the most energetic and noise-free part of the waveform and is the one used in 
-GreensonNet, since only a strong, clean signal can provide reliable information for estimating the Green’s Function.
-Peak segmentation is carried out in two stages.
-In the first stage, the function Find Start and End Peak of Signal is executed, which estimates the beginning of the 
-seismic wave, its maximum amplitude, and its end. These values are then recorded in a JSON file.
+The next step is to determine the peak segmentation of the HHZ signal.
+To achieve this, we first identify the onset point of the seismic wave using the Akaike Information Criterion 
+(AIC) algorithm, and then locate the peak, defined as the absolute maximum amplitude of the signal. We then measure 
+the time interval between the onset and the peak, and extend the time window by the same duration beyond the peak, 
+until the signal starts to decay. This extracted segment represents the most energetic and noise-free portion of the 
+waveform and is the one used in GreensonNet, since only a strong and clean signal can provide reliable information 
+for estimating the Green’s Function.
+Peak segmentation is performed in two stages.
+In the first stage, the function Find Start and End Peak of Signal is executed. This function estimates the beginning 
+of the seismic wave, the time and index of its maximum amplitude, the end of the peak segment, and the end of the 
+event signal. The end of the event signal and the peak amplitude time are determined as follows:
+The signal is processed using a 4th-order Butterworth band-pass filter. The Hilbert transform is then applied to the 
+filtered signal. The peak of the signal corresponds to the maximum of the Hilbert envelope, while the end of the event 
+signal is defined as the point where the Hilbert envelope value drops below the estimated noise level of the HHZ 
+channel. These computed parameters are subsequently recorded in a JSON file for further analysis.
+
+``` PS_boundaries.json
+{
+  "2010": {
+    "20100507T041515_36.68_25.71_15.0km_M3.4": {
+      "HL.APE": {
+        "HHZ": {
+          "start_idx": 4204,
+          "start_time": "2010-05-07T04:15:23.550000Z",
+          "peak_amplitude_idx": 5334,
+          "peak_amplitude_time": "2010-05-07T04:15:34.850000Z",
+          "peak_amplitude": 1.0,
+          "end_of_peak_segment_idx": 6464,
+          "end_of_peak_segment_time": "2010-05-07T04:15:46.150000Z",
+          "end_of_signal_idx": 5334,
+          "end_of_signal_time": "2010-05-07T04:15:34.850000Z",
+          "event_duration_idx": 1130,
+          "event_duration_time": 11.3,
+          "total_duration_nof_samples": 2260,
+          "total_duration_time": "22.60"
+        },
+        "minimum_station_snr": 8.839
+      },
+      ...
+    }
+  }
+}    
+```
+
 In the second stage, the function create_peak_segmentation() files is executed, which takes as input the 
 *_dmean_detrend_IC_BPF.mseed files and produces as output the *_dmean_detrend_IC_BPF_PS.mseed files.
 
