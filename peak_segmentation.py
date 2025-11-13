@@ -447,7 +447,7 @@ def plot_peak_segmentation_duration_distribution(bin_size: float = 5.0):
     from main import LOG_DIR
 
     # --- Ανάγνωση αρχείου ---
-    json_path = os.path.join(LOG_DIR, "boundaries.json")
+    json_path = os.path.join(LOG_DIR, "PS_boundaries.json")
     if not os.path.exists(json_path):
         print(f"❌ Δεν βρέθηκε το αρχείο: {json_path}")
         return
@@ -457,6 +457,8 @@ def plot_peak_segmentation_duration_distribution(bin_size: float = 5.0):
 
     # --- Διασχίζουμε τη δομή: έτος → event → σταθμό → κανάλι ---
     for year, events in data.items():
+        if year == "total_nof_stations":
+            continue
         for event_name, stations in events.items():
             for station_name, channels in stations.items():
                 if not isinstance(channels, dict):
@@ -469,7 +471,7 @@ def plot_peak_segmentation_duration_distribution(bin_size: float = 5.0):
                     if not ch_name.endswith("Z"):
                         continue
 
-                    dur = ch_info.get("duration_of_peak_segment")
+                    dur = ch_info.get("peak_segment_duration_time")
                     if dur is None:
                         continue
 
@@ -521,7 +523,7 @@ def plot_clean_event_duration_distribution(bin_size: float = 5.0):
     from main import LOG_DIR
 
     # --- Ανάγνωση αρχείου ---
-    json_path = os.path.join(LOG_DIR, "boundaries.json")
+    json_path = os.path.join(LOG_DIR, "PS_boundaries.json")
     if not os.path.exists(json_path):
         print(f"❌ Δεν βρέθηκε το αρχείο: {json_path}")
         return
@@ -546,7 +548,7 @@ def plot_clean_event_duration_distribution(bin_size: float = 5.0):
                     if not ch_name.endswith("Z"):
                         continue
 
-                    dur = ch_info.get("event_duration_time")
+                    dur = ch_info.get("clean_event_duration_time")
                     if dur is None:
                         continue
 
@@ -598,7 +600,7 @@ def plot_snr_distribution(bin_size: float = 3.0):
     from main import LOG_DIR
 
     # --- Διαδρομή αρχείου ---
-    json_path = os.path.join(LOG_DIR, "boundaries.json")
+    json_path = os.path.join(LOG_DIR, "PS_boundaries.json")
 
     # --- Έλεγχος ύπαρξης ---
     if not os.path.exists(json_path):
@@ -787,8 +789,8 @@ def count_nof_training_stations(
 
 # ==========================================================
 if __name__ == "__main__":
-    find_boundaries()
+    #find_boundaries()
     #plot_clean_event_duration_distribution()
     #plot_peak_segmentation_duration_distribution()
-    #plot_snr_distribution()
+    plot_snr_distribution()
     #create_peak_segmentation_files()

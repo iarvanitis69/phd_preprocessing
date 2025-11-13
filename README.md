@@ -395,9 +395,16 @@ consistent dataset for downstream processing pipelines such as GreensonNet.
 ![img.png](images/signal_with_boundaries.png)
 
 After computing the segmentation boundaries for all stations, the next step is to analyze the distribution of the 
-extracted parameters. First, we compute the scatter plot of the peak segmentation duration in order to visualize where 
-the peak segment predominantly lies across all stations. This plot provides an overview of how long the strongest part 
-of the signal lasts and whether the peak segment durations cluster around specific values.
+extracted parameters.
+In the first stage, we generate the distribution — specifically, the histogram — of the Clean Event Duration Time for 
+all stations. This allows us to identify whether there are stations whose clean event duration falls below a certain 
+threshold, which determines whether they are eligible for inclusion in the Training Set.
+
+![img.png](images/clean_event_duration_distribution.png)
+
+We compute the scatter plot of the peak segmentation duration in order to visualize where the peak segment predominantly 
+lies across all stations. This plot provides an overview of how long the strongest part of the signal lasts and whether 
+the peak segment durations cluster around specific values.
 
 ![img.png](images/peak_segmentation_duration_distribution.png)
 
