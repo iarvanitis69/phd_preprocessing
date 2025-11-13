@@ -238,13 +238,13 @@ def find_peak_segmentation():
                                         break
                                 if end_of_event_idx is None:
                                     end_of_event_idx = len(norm_env) - 1
-
+                                    
                                 end_of_event_idx = end_of_event_idx + start_of_event_idx
                                 end_of_event_time = tr.stats.starttime + end_of_event_idx / sr
 
                                 # --- Υπολογισμός συνολικής διάρκειας ---
-                                event_duration_nof_samples = int(end_of_event_idx) - int(start_of_event_idx)
-                                event_duration_time = event_duration_nof_samples / sr
+                                clean_event_duration_nof_samples = int(end_of_event_idx) - int(start_of_event_idx)
+                                clean_event_duration_time = clean_event_duration_nof_samples / sr
                                 total_signal_nof_samples = len(tr.data)
                                 total_signal_time = total_signal_nof_samples / sr
 
@@ -261,8 +261,8 @@ def find_peak_segmentation():
                                     "peak_segment_duration_time": f"{peak_segment_duration_time:.2f}",
                                     "end_of_event_idx": int(end_of_event_idx),
                                     "end_of_event_time": str(end_of_event_time),
-                                    "event_duration_nof_samples": int(event_duration_nof_samples),
-                                    "event_duration_time": f"{event_duration_time:.2f}",
+                                    "clean_event_duration_nof_samples": int(clean_event_duration_nof_samples),
+                                    "clean_event_duration_time": f"{clean_event_duration_time:.2f}",
                                     "total_signal_nof_samples": int(total_signal_nof_samples),
                                     "total_signal_time": f"{total_signal_time:.2f}",
                                 }
@@ -289,7 +289,7 @@ def find_peak_segmentation():
                     print(
                         f"💾 Αποθηκεύτηκε {year}/{eventJson}/{stationJson}: "
                         f"SNR={station_snr:.2f}, peak_segment_duration_time={peak_segment_duration_time:.2f}, "
-                        f"event_duration_time={event_duration_time:.2f}, total_signal_time={total_signal_time:.2f}"
+                        f"clean_event_duration_time={clean_event_duration_time:.2f}, total_signal_time={total_signal_time:.2f}"
                     )
 
     print(f"\n✅ Ολοκληρώθηκε η καταγραφή όλων των σταθμών στο: {OUTPUT_JSON}")
