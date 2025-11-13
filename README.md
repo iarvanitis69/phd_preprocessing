@@ -305,41 +305,55 @@ cutoff frequency set to 1 Hz. The function filter_all_files() takes as input the
 provides as output the files *_demeanDetrend_IC_BPF.mseed file
 
 ### peak_segmentation.py
-The next step is to determine the peak segmentation of the HHZ signal.
-To achieve this, we first identify the onset point of the seismic wave using the Akaike Information Criterion 
-(AIC) algorithm, and then locate the peak, defined as the absolute maximum amplitude of the signal. We then measure 
-the time interval between the onset and the peak, and extend the time window by the same duration beyond the peak, 
-until the signal starts to decay. This extracted segment represents the most energetic and noise-free portion of the 
-waveform and is the one used in GreensonNet, since only a strong and clean signal can provide reliable information 
-for estimating the Green’s Function.
-Peak segmentation is performed in two stages.
-In the first stage, the function Find Start and End Peak of Signal is executed. This function estimates the beginning 
-of the seismic wave, the time and index of its maximum amplitude, the end of the peak segment, and the end of the 
-event signal. The end of the event signal and the peak amplitude time are determined as follows:
-The signal is processed using a 4th-order Butterworth band-pass filter. The Hilbert transform is then applied to the 
-filtered signal. The peak of the signal corresponds to the maximum of the Hilbert envelope, while the end of the event 
-signal is defined as the point where the Hilbert envelope value drops below the estimated noise level of the HHZ 
-channel. These computed parameters are subsequently recorded in a JSON file for further analysis.
+
+### find_peak_segment
+
+The next step is to determine the peak segmentation of the HHZ signal using the function find_peak_segment().
+To achieve this, we first identify the onset of the seismic wave using the Akaike Information Criterion (AIC) algorithm.
+Once the onset point is located, we determine the peak of the signal, defined as the absolute maximum amplitude of the 
+Hilbert envelope. We then measure the time interval between the onset and the peak and extend the time window by the 
+same duration beyond the peak, until the signal begins to decay. This extracted segment represents the most energetic 
+and noise-free portion of the waveform and is the segment used in GreensonNet, since only strong and clean signals can 
+provide reliable information for estimating the Green’s Function.
+
+In more detail, the find_peak_segment() function estimates the following parameters:
+(1) the onset of the seismic wave,
+(2) the time and index of its maximum amplitude,
+(3) the end of the peak segment, and
+(4) the end of the seismic event.
+
+The signal is first processed with a 4th-order Butterworth band-pass filter, and the Hilbert transform is then applied 
+to the filtered waveform. The peak of the signal corresponds to the maximum of the resulting Hilbert envelope. The end 
+of the event signal is defined as the point where the envelope amplitude drops below the estimated noise level of the 
+HHZ channel.
+After identifying the peak, the algorithm continues to scan the Hilbert envelope forward in time. As the seismic energy 
+gradually decays, the envelope eventually reaches the noise floor. The moment at which the envelope first falls below 
+this noise threshold is defined as the end of the seismic event.
+All computed parameters are systematically recorded in a JSON file, enabling subsequent analysis and providing a 
+consistent dataset for downstream processing pipelines such as GreensonNet.
 
 ``` PS_boundaries.json
 {
+  "total_nof_stations": 44,
   "2010": {
     "20100507T041515_36.68_25.71_15.0km_M3.4": {
       "HL.APE": {
         "HHZ": {
-          "start_idx": 4204,
-          "start_time": "2010-05-07T04:15:23.550000Z",
-          "peak_amplitude_idx": 5334,
-          "peak_amplitude_time": "2010-05-07T04:15:34.850000Z",
-          "peak_amplitude": 1.0,
-          "end_of_peak_segment_idx": 6464,
-          "end_of_peak_segment_time": "2010-05-07T04:15:46.150000Z",
-          "end_of_signal_idx": 5334,
-          "end_of_signal_time": "2010-05-07T04:15:34.850000Z",
-          "event_duration_idx": 1130,
-          "event_duration_time": 11.3,
-          "total_duration_nof_samples": 2260,
-          "total_duration_time": "22.60"
+          "start_of_event_idx": 4204,
+          "start_of_event_datetime": "2010-05-07T04:15:23.550000Z",
+          "peak_amplitude_idx": 5284,
+          "peak_amplitude_datetime": "2010-05-07T04:15:34.350000Z",
+          "peak_amplitude": 0.52197,
+          "end_of_peak_segment_idx": 6364,
+          "end_of_peak_segment_datetime": "2010-05-07T04:15:45.150000Z",
+          "peak_segment_duration_nof_samples": 2160,
+          "peak_segment_duration_time": "21.60",
+          "end_of_event_idx": 9604,
+          "end_of_event_time": "2010-05-07T04:16:17.550000Z",
+          "event_duration_nof_samples": 5400,
+          "event_duration_time": "54.00",
+          "total_signal_nof_samples": 21526,
+          "total_signal_time": "215.26"
         },
         "minimum_station_snr": 8.839
       },
@@ -349,12 +363,54 @@ channel. These computed parameters are subsequently recorded in a JSON file for 
 }    
 ```
 
-In the second stage, the function create_peak_segmentation() files is executed, which takes as input the 
-*_dmean_detrend_IC_BPF.mseed files and produces as output the *_dmean_detrend_IC_BPF_PS.mseed files.
+| Field Name       | Type    | Description |
+|------------------|---------|-------------|
+| YEAR             | String  | Top-level key grouping all events that occurred in the same year (e.g., "2010"). |
+| EVENT_ID         | String  | Unique event identifier containing origin time, latitude, longitude, depth, and magnitude (e.g., "20100507T041515_36.68_25.71_15.0km_M3.4"). |
+| STATION_CODE     | String  | Seismic station identifier in the form NETWORK.STATION (e.g., "HL.APE"). |
+| CHANNEL_CODE     | String  | Channel identifier, usually HHZ, HHN, HHE (or EHZ/BHZ equivalents). Each channel contains its own segmentation fields. |
+| minimum_station_snr | Float | Minimum SNR among the three channels (HHZ/HHN/HHE) for that station. Added once per station, not per channel. |
+
+
+| Field Name                         | Type    | Description |
+|------------------------------------|---------|-------------|
+| total_nof_stations                 | Integer | Total number of stations processed and included in the file. |
+| start_of_event_idx                 | Integer | Sample index where the AIC picker detected the onset of the seismic event. |
+| start_of_event_datetime            | String  | UTC timestamp of the event onset (AIC-derived). |
+| peak_amplitude_idx                 | Integer | Sample index of the strongest peak in the Hilbert envelope after the event onset. |
+| peak_amplitude_datetime            | String  | UTC timestamp of the strongest peak. |
+| peak_amplitude                     | Float   | Normalized amplitude (0–1 scale) of the strongest peak. |
+| end_of_peak_segment_idx            | Integer | Sample index marking the end of the peak segment window (symmetric around the peak). |
+| end_of_peak_segment_datetime       | String  | UTC timestamp of the end of the peak segment. |
+| peak_segment_duration_nof_samples  | Integer | Number of samples in the peak segmentation window. |
+| peak_segment_duration_time         | String  | Duration of the peak segmentation window in seconds. |
+| end_of_event_idx                   | Integer | Sample index where the Hilbert envelope energy drops back to the noise level (SNR-based). |
+| end_of_event_time                  | String  | UTC timestamp marking the end of the clean event signal. |
+| event_duration_nof_samples         | Integer | Duration of the clean event in samples (AIC → SNR-based end). |
+| event_duration_time                | String  | Duration of the clean event in seconds. |
+| total_signal_nof_samples           | Integer | Total number of samples in the raw waveform (.mseed trace). |
+| total_signal_time                  | String  | Total duration of the full waveform in seconds. |
+| minimum_station_snr                | Float   | Minimum SNR among HHZ/HHN/HHE channels for the station. |
+
+After computing the segmentation boundaries for all stations, the next step is to analyze the distribution of the 
+extracted parameters. First, we compute the scatter plot of the peak segmentation duration in order to visualize where 
+the peak segment predominantly lies across all stations. This plot provides an overview of how long the strongest part 
+of the signal lasts and whether the peak segment durations cluster around specific values.
 
 ![img.png](images/peak_segmentation_duration_distribution.png)
 
+Next, we compute the SNR distribution, based on the minimum SNR value of each station. By generating the corresponding 
+scatter or histogram plot, we can observe how the SNR varies among the stations and whether certain stations 
+consistently exhibit lower or higher signal quality. This visualization helps assess the reliability and robustness of 
+the dataset before it is used in downstream processing.
+
 ![img.png](images/snr_distribution.png)
+
+These diagnostic plots serve as an important quality-control step, ensuring that the seismic signals exhibit consistent 
+behaviour and that all stations meet the required signal-to-noise thresholds.
+
+In the second stage, the function create_peak_segmentation() files is executed, which takes as input the 
+*_dmean_detrend_IC_BPF.mseed files and produces as output the *_dmean_detrend_IC_BPF_PS.mseed files.
 
 
 ### convert_ΝΖΕ_to_LQT.py
