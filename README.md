@@ -445,6 +445,25 @@ diagnostic or quality-control purposes.
 In the second stage, the function create_peak_segmentation() files is executed, which takes as input the 
 *_dmean_detrend_IC_BPF.mseed files and produces as output the *_dmean_detrend_IC_BPF_PS.mseed files.
 
+### The used stations on training (training set)
+The function COUNT NOF TRAINING STATIONS determines the final number of stations that will be used in the Training Set.
+This function classifies each station based on three criteria:
+
+ - the Minimum SNR,
+ - the Maximum Peak Segment Duration, and
+ - the Minimum Clean Event Duration.
+
+Using these thresholds, the function decides which seismic signals are suitable for inclusion in the Training Set.
+
+
+📊 *** SIGNAL CLASSIFICATION REPORT ***
+⚠ NOT USED SET : SNR ≥ 5 & PS_duration_time > 30 sec : 594
+⚠ NOT USED SET : SNR < 5 : 9025
+⚠ NOT USED SET : SNR ≥ 5 & clean_event_duration_time < 30 sec : 1
+------------------------------------------------------------------------------------------------------------
+✔ TRAINING SET : SNR ≥ 5 & PS_duration_time ≤ 30 sec & clean_event_duration_time ≥ 30 sec : 7836
+
+
 
 ### convert_ΝΖΕ_to_LQT.py
 The nextstep of the preprocessing pipeline is the transformation from the NZE coordinate system to the LQT coordinate 

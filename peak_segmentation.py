@@ -792,5 +792,6 @@ if __name__ == "__main__":
     #find_boundaries()
     #plot_clean_event_duration_distribution()
     #plot_peak_segmentation_duration_distribution()
-    plot_snr_distribution()
+    #plot_snr_distribution()
+    count_nof_training_stations(5,30,30)
     #create_peak_segmentation_files()
