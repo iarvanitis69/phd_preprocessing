@@ -74,6 +74,17 @@ def find_peak_segmentation():
     from scipy.signal import find_peaks, butter, filtfilt, hilbert
     from main import LOG_DIR, BASE_DIR
 
+    # --- Helper: αποθήκευση JSON με atomic τρόπο ---
+    def save_json(path, data):
+        tmp_path = path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, path)
+
+    def load_json(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
     # --- Helper: υπολογισμός ελάχιστου SNR ---
     def add_min_station_snr(station_results: dict, minimum_station_snr: float):
         max_duration = 0.0
@@ -97,6 +108,7 @@ def find_peak_segmentation():
 
     # --- Paths ---
     OUTPUT_JSON = os.path.join(LOG_DIR, "PS_boundaries.json")
+    AIC_FAIL_JSON = os.path.join(LOG_DIR, "AIC_failure.json")
     os.makedirs(LOG_DIR, exist_ok=True)
 
     snr_path = os.path.join(LOG_DIR, "snr.json")
@@ -110,10 +122,11 @@ def find_peak_segmentation():
         print(f"⚠️ Σφάλμα κατά την ανάγνωση του snr.json: {e}")
         return set()
 
-    # Αν υπάρχει ήδη το PS_boundaries.json, φόρτωσέ το
+    # --- Αν υπάρχει ήδη το PS_boundaries.json, φόρτωσέ το ---
     if os.path.exists(OUTPUT_JSON):
         try:
             all_results = load_json(OUTPUT_JSON)
+            print(f"📂 Φορτώθηκε το υπάρχον PS_boundaries.json")
         except Exception:
             all_results = {}
     else:
@@ -125,8 +138,7 @@ def find_peak_segmentation():
     for year, events in events_dict.items():
         for eventJson, stations in events.items():
             for stationJson, chans in stations.items():
-
-                # ➤ Skip αν υπάρχει ήδη
+                # Skip αν υπάρχει ήδη
                 if (
                     str(year) in all_results
                     and eventJson in all_results[str(year)]
@@ -140,13 +152,13 @@ def find_peak_segmentation():
                 station_path = os.path.join(event_path, stationJson)
                 station_results = {}
 
-                # SNR του σταθμού (αν δεν υπάρχει, 5 ως default)
+                # SNR του σταθμού
                 station_snr = chans.get("minimum_snr", 0)
+
                 for root, _, files in os.walk(station_path):
                     if "info.json" in root:
                         continue
                     for fname in files:
-                        # ➤ Μόνο τα Z κανάλια
                         if not fname.endswith("_demeanDetrend_IC_BPF.mseed") or "HHZ" not in fname:
                             continue
                         try:
@@ -155,7 +167,7 @@ def find_peak_segmentation():
                             print(f"⚠️ Αποτυχία ανάγνωσης {year}/{eventJson}/{stationJson} {fname}: {e}")
                             continue
 
-                        channelSnrJson = chans.get("HHZ", 0).get("snr,0")
+                        channelSnrJson = chans.get("HHZ", 0).get("snr",0)
 
                         for tr in st:
                             try:
@@ -163,9 +175,21 @@ def find_peak_segmentation():
                                 sr = tr.stats.sampling_rate
 
                                 # --- Βήμα 1: Εύρεση AIC έναρξης ---
-                                aic_idx, _ = aic_picker(data)
-                                if aic_idx is None:
-                                    print(f"⚠️ AIC αποτυχία για {year}/{eventJson}/{stationJson} {tr.id}")
+                                start_of_event_idx, _ = aic_picker(data)
+                                if start_of_event_idx is None:
+                                    # --- Καταγραφή AIC αποτυχίας ---
+                                    try:
+                                        aic_failures = load_json(AIC_FAIL_JSON) if os.path.exists(AIC_FAIL_JSON) else {}
+                                    except Exception:
+                                        aic_failures = {}
+
+                                    year_dict = aic_failures.setdefault(str(year), {})
+                                    event_dict = year_dict.setdefault(eventJson, {})
+                                    failed_channels = event_dict.setdefault(stationJson, [])
+                                    ch_id = tr.id.split('.')[-1]
+                                    if ch_id not in failed_channels:
+                                        failed_channels.append(ch_id)
+                                    save_json(AIC_FAIL_JSON, aic_failures)
                                     continue
 
                                 # --- Βήμα 2: Bandpass 1–20 Hz ---
@@ -177,72 +201,85 @@ def find_peak_segmentation():
 
                                 # --- Βήμα 4: Buffer 0.5 s μετά το AIC ---
                                 buffer_samples = int(0.5 * sr)
-                                search_segment = norm_env[aic_idx + buffer_samples:]
+                                search_segment = norm_env[start_of_event_idx + buffer_samples:]
                                 threshold = 0.2 * np.max(search_segment)
 
                                 # --- Βήμα 5: Εύρεση peaks ---
                                 peaks, properties = find_peaks(
                                     search_segment,
                                     height=threshold,
-                                    prominence=0.5,
+                                    prominence=0.8,
                                     distance=int(0.3 * sr)
                                 )
-
                                 if len(peaks) == 0:
-                                    pick_idx = int(aic_idx + np.argmax(search_segment))
+                                    peak_amplitude_idx = int(start_of_event_idx + np.argmax(search_segment))
                                 else:
-                                    main_peak = peaks[np.argmax(properties["peak_heights"])]
-                                    pick_idx = aic_idx + buffer_samples + main_peak
+                                    peak_amplitude_idx = peaks[0]
+                                    peak_amplitude_idx = peak_amplitude_idx + start_of_event_idx
+                                    #peak_amplitude_idx = start_of_event_idx + buffer_samples + main_peak
 
-                                # --- Βήμα 6: Ορισμός χρόνων ---
-                                start_time = tr.stats.starttime + aic_idx / sr
-                                pick_time = tr.stats.starttime + pick_idx / sr
-                                end_idx = 2 * pick_idx - aic_idx
-                                end_time = tr.stats.starttime + end_idx / sr
-                                peak_segment_duration_samples = int(2 * (pick_idx - aic_idx))
+                                # --- Βήμα 6: Υπολογισμός χρόνων ---
+                                start_of_event_datetime = tr.stats.starttime + start_of_event_idx / sr
+                                peak_amplitude_datetime = tr.stats.starttime + peak_amplitude_idx / sr
+                                end_of_peak_segment_idx = 2 * peak_amplitude_idx - start_of_event_idx
+                                end_of_peak_segment_datetime = tr.stats.starttime + end_of_peak_segment_idx / sr
+                                peak_segment_duration_samples = int(2 * (peak_amplitude_idx - start_of_event_idx))
                                 peak_segment_duration_time = peak_segment_duration_samples / sr
 
-                                pick_ampl = float(norm_env[pick_idx])
+                                pick_ampl = float(norm_env[peak_amplitude_idx])
                                 ch_id = tr.id.split('.')[-1]
 
                                 # --- Βήμα 7: Υπολογισμός τέλους σήματος με βάση το SNR ---
                                 threshold_end = 1.0 / (channelSnrJson or 1.0)
-                                end_of_signal_index = None
-
-                                for i in range(pick_idx, len(norm_env)):
+                                end_of_event_idx = None
+                                for i in range(peak_amplitude_idx, len(norm_env)):
                                     if norm_env[i] <= threshold_end:
-                                        end_of_signal_index = i
+                                        end_of_event_idx = i
                                         break
+                                if end_of_event_idx is None:
+                                    end_of_event_idx = len(norm_env) - 1
 
-                                if end_of_signal_index is None:
-                                    end_of_signal_index = len(norm_env) - 1  # Αν δεν βρεθεί
+                                end_of_event_idx = end_of_event_idx + start_of_event_idx
+                                end_of_event_time = tr.stats.starttime + end_of_event_idx / sr
 
-                                end_of_signal_time = tr.stats.starttime + end_of_signal_index / sr
+                                # --- Υπολογισμός συνολικής διάρκειας ---
+                                event_duration_nof_samples = int(end_of_event_idx) - int(start_of_event_idx)
+                                event_duration_time = event_duration_nof_samples / sr
+                                total_signal_nof_samples = len(tr.data)
+                                total_signal_time = total_signal_nof_samples / sr
 
                                 # --- Αποθήκευση ---
                                 station_results[ch_id] = {
-                                    "start_idx": int(aic_idx),
-                                    "start_time": str(start_time),
-                                    "peak_amplitude_idx": int(pick_idx),
-                                    "peak_amplitude_time": str(pick_time),
+                                    "start_of_event_idx": int(start_of_event_idx),
+                                    "start_of_event_datetime": str(start_of_event_datetime),
+                                    "peak_amplitude_idx": int(peak_amplitude_idx),
+                                    "peak_amplitude_datetime": str(peak_amplitude_datetime),
                                     "peak_amplitude": round(pick_ampl, 5),
-                                    "end_of_peak_segment_idx": int(end_idx),
-                                    "end_of_peak_segment_time": str(end_time),
-                                    "end_of_signal_idx": int(end_of_signal_index),
-                                    "end_of_signal_time": str(end_of_signal_time),
-                                    "event_duration_idx":int(end_of_signal_index)-int(aic_idx),
-                                    "event_duration_time":(int(end_of_signal_index)-int(aic_idx))/sr,
-                                    "peak_segment_duration_nof_samples": peak_segment_duration_samples,
+                                    "end_of_peak_segment_idx": int(end_of_peak_segment_idx),
+                                    "end_of_peak_segment_datetime": str(end_of_peak_segment_datetime),
+                                    "peak_segment_duration_nof_samples": int(peak_segment_duration_samples),
                                     "peak_segment_duration_time": f"{peak_segment_duration_time:.2f}",
+                                    "end_of_event_idx": int(end_of_event_idx),
+                                    "end_of_event_time": str(end_of_event_time),
+                                    "event_duration_nof_samples": int(event_duration_nof_samples),
+                                    "event_duration_time": f"{event_duration_time:.2f}",
+                                    "total_signal_nof_samples": int(total_signal_nof_samples),
+                                    "total_signal_time": f"{total_signal_time:.2f}",
                                 }
 
                             except Exception as e:
                                 print(f"⚠️ Σφάλμα στο {year}/{eventJson}/{stationJson}/{tr.id}: {e}")
 
-                # ✅ Μόλις ολοκληρωθεί ο σταθμός
+                # ✅ Ο σταθμός ολοκληρώθηκε
                 if len(station_results) > 0:
                     add_min_station_snr(station_results, station_snr)
 
+                    # --- Μετρητής σταθμών ---
+                    total_key = "total_nof_stations"
+                    prev = all_results.get(total_key, 0)
+                    all_results[total_key] = prev + 1
+
+                    # --- Ενημέρωση δομής ---
                     year_dict = all_results.setdefault(str(year), {})
                     event_dict = year_dict.setdefault(eventJson, {})
                     event_dict[stationJson] = station_results
@@ -250,9 +287,9 @@ def find_peak_segmentation():
                     save_json(OUTPUT_JSON, all_results)
 
                     print(
-                        f'💾 Αποθηκεύτηκε {year}/{eventJson}/{stationJson}: '
-                        f'SNR={station_snr}, peak_segment_duration_time_HHZ={peak_segment_duration_time:.2f}, '
-                        f'end_of_signal_time={end_of_signal_time}'
+                        f"💾 Αποθηκεύτηκε {year}/{eventJson}/{stationJson}: "
+                        f"SNR={station_snr:.2f}, peak_segment_duration_time={peak_segment_duration_time:.2f}, "
+                        f"event_duration_time={event_duration_time:.2f}, total_signal_time={total_signal_time:.2f}"
                     )
 
     print(f"\n✅ Ολοκληρώθηκε η καταγραφή όλων των σταθμών στο: {OUTPUT_JSON}")
@@ -390,12 +427,11 @@ def aic_picker(trace_data):
     min_idx = int(np.argmin(aic[1:pick_idx - 1])) + 1
     return min_idx, aic
 
-import matplotlib.pyplot as plt
 
-def plot_peak_segmentation_duration_distribution(bin_size: float = 10.0):
+def plot_peak_segmentation_duration_distribution(bin_size: float = 5.0):
     """
     Υπολογίζει και σχεδιάζει την κατανομή (ραβδόγραμμα)
-    των total_duration_time τιμών ΜΟΝΟ για τα Z κανάλια (π.χ. HHZ, BHZ, EHZ)
+    των duration_of_peak_segment τιμών ΜΟΝΟ για τα Z κανάλια (π.χ. HHZ, BHZ, EHZ)
     από το αρχείο PS_boundaries.json και το αποθηκεύει στο Logs/station-duration-distribution.png
     """
     import os
@@ -426,7 +462,7 @@ def plot_peak_segmentation_duration_distribution(bin_size: float = 10.0):
                     if not ch_name.endswith("Z"):
                         continue
 
-                    dur = ch_info.get("total_duration_time")
+                    dur = ch_info.get("duration_of_peak_segment")
                     if dur is None:
                         continue
 
@@ -436,7 +472,7 @@ def plot_peak_segmentation_duration_distribution(bin_size: float = 10.0):
                         continue
 
     if not durations:
-        print("❌ Δεν βρέθηκαν τιμές total_duration_time για κανάλια Z")
+        print("❌ Δεν βρέθηκαν τιμές duration_of_peak_segment για κανάλια Z")
         return
 
     # --- Bins ---
@@ -553,7 +589,7 @@ def plot_snr_distribution(bin_size: float = 3.0):
 
 # ==========================================================
 if __name__ == "__main__":
-    #find_peak_segmentation()
-    plot_peak_segmentation_duration_distribution()
+    find_peak_segmentation()
+    #plot_peak_segmentation_duration_distribution()
     #plot_snr_distribution()
     #create_peak_segmentation_files()
