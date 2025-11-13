@@ -304,11 +304,11 @@ of anthropogenic origin. Therefore, we decided to filter them out using a fourth
 cutoff frequency set to 1 Hz. The function filter_all_files() takes as input the files *_demeanDetrend_IC.mseed files and
 provides as output the files *_demeanDetrend_IC_BPF.mseed file
 
-### peak_segmentation.py
+### boundaries.py
 
-### find_peak_segment
+### boundaries
 
-The next step is to determine the peak segmentation of the HHZ signal using the function find_peak_segment().
+The next step is to determine the peak segmentation of the HHZ signal using the function find_boundaries().
 To achieve this, we first identify the onset of the seismic wave using the Akaike Information Criterion (AIC) algorithm.
 Once the onset point is located, we determine the peak of the signal, defined as the absolute maximum amplitude of the 
 Hilbert envelope. We then measure the time interval between the onset and the peak and extend the time window by the 
@@ -316,7 +316,7 @@ same duration beyond the peak, until the signal begins to decay. This extracted 
 and noise-free portion of the waveform and is the segment used in GreensonNet, since only strong and clean signals can 
 provide reliable information for estimating the Green’s Function.
 
-In more detail, the find_peak_segment() function estimates the following parameters:
+In more detail, the find_boundaries() function estimates the following parameters:
 (1) the onset of the seismic wave,
 (2) the time and index of its maximum amplitude,
 (3) the end of the peak segment, and
@@ -332,7 +332,7 @@ this noise threshold is defined as the end of the seismic event.
 All computed parameters are systematically recorded in a JSON file, enabling subsequent analysis and providing a 
 consistent dataset for downstream processing pipelines such as GreensonNet.
 
-``` PS_boundaries.json
+``` boundaries.json
 {
   "total_nof_stations": 44,
   "2010": {
@@ -392,6 +392,8 @@ consistent dataset for downstream processing pipelines such as GreensonNet.
 | total_signal_time                  | String  | Total duration of the full waveform in seconds. |
 | minimum_station_snr                | Float   | Minimum SNR among HHZ/HHN/HHE channels for the station. |
 
+![img.png](images/signal_with_boundaries.png)
+
 After computing the segmentation boundaries for all stations, the next step is to analyze the distribution of the 
 extracted parameters. First, we compute the scatter plot of the peak segmentation duration in order to visualize where 
 the peak segment predominantly lies across all stations. This plot provides an overview of how long the strongest part 
@@ -408,6 +410,30 @@ the dataset before it is used in downstream processing.
 
 These diagnostic plots serve as an important quality-control step, ensuring that the seismic signals exhibit consistent 
 behaviour and that all stations meet the required signal-to-noise thresholds.
+
+### AIC failure
+In some seismic recordings, the waveform morphology is such that the AIC (Akaike Information Criterion) algorithm fails 
+to detect a reliable onset time. This typically occurs in cases where the signal begins too gradually, contains complex 
+emergent energy, or is dominated by noise in the early portion of the trace. When the AIC picker is unable to estimate 
+the start of the seismic event, the trace cannot be processed further for peak segmentation.
+All events for which the AIC algorithm fails are recorded in a dedicated JSON file named AIC_failure.json. Each failure 
+is stored following the hierarchy:
+
+``` AIC_failure.json
+{
+  "count:10
+  "2024": {
+    "20240531T081538_36.68_25.77_11.3km_M3.2": {
+      "HL.SANT"
+    },
+    ...
+```
+
+Additionally, the file maintains a top-level counter (count) that tracks the total number of stations where AIC onset 
+detection was unsuccessful. This mechanism ensures that problematic waveforms are systematically tracked, the 
+preprocessing pipeline remains robust when restarting or resuming execution and AIC failures can be reviewed later for 
+diagnostic or quality-control purposes.
+
 
 In the second stage, the function create_peak_segmentation() files is executed, which takes as input the 
 *_dmean_detrend_IC_BPF.mseed files and produces as output the *_dmean_detrend_IC_BPF_PS.mseed files.

@@ -11,7 +11,7 @@ from gaps import find_files_for_gaps
 from glitches import find_files_for_glitches_parallel
 from instrument_correction import instrument_correction
 from overlaps import find_files_for_overlaps
-from peak_segmentation import  find_peak_segmentation
+from peak_segmentation import  find_boundaries
 from snr import find_snr
 from missingFiles import find_stations_with_issues
 
@@ -56,10 +56,22 @@ def main():
     #filter_all_files()
 
     # print("🔍 Βρίσκει το pick segmentation...")
-    find_peak_segmentation()
+    find_boundaries()
 
-    # print("🔍 Κρατάει μόνο το pick segmentation...")
-    #store_peak_segmentation()
+    # print("🔍 Create clean event distribution...")
+    #plot_clean_event_duration_distribution()
+
+    # print("🔍 Create peak segmentation distribution...")
+    #plot_peak_segmentation_duration_distribution()
+
+    # print("🔍 Create SNR distribution...")
+    #plot_snr_distribution()
+
+    # print("🔍 Count nof training stations...")
+    #count_nof_training_stations(5,30)
+
+    # print("🔍 Create clean event distribution...")
+    #create_peak_segmentation_files(5,30)
 
     # print("🔍 Conversion to LQT")
     #convert_to_LQT()

@@ -66,7 +66,7 @@ from typing import List, Set, Tuple
 # ==========================================================
 # ✅ ΦΑΣΗ 1: Υπολογισμός start/pick/end & ενημέρωση JSON
 # ==========================================================
-def find_peak_segmentation():
+def find_boundaries():
     import os
     import json
     import numpy as np
@@ -107,7 +107,7 @@ def find_peak_segmentation():
         return filtfilt(b, a, data)
 
     # --- Paths ---
-    OUTPUT_JSON = os.path.join(LOG_DIR, "PS_boundaries.json")
+    OUTPUT_JSON = os.path.join(LOG_DIR, "boundaries.json")
     AIC_FAIL_JSON = os.path.join(LOG_DIR, "AIC_failure.json")
     os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -122,11 +122,11 @@ def find_peak_segmentation():
         print(f"⚠️ Σφάλμα κατά την ανάγνωση του snr.json: {e}")
         return set()
 
-    # --- Αν υπάρχει ήδη το PS_boundaries.json, φόρτωσέ το ---
+    # --- Αν υπάρχει ήδη το boundaries.json, φόρτωσέ το ---
     if os.path.exists(OUTPUT_JSON):
         try:
             all_results = load_json(OUTPUT_JSON)
-            print(f"📂 Φορτώθηκε το υπάρχον PS_boundaries.json")
+            print(f"📂 Φορτώθηκε το υπάρχον boundaries.json")
         except Exception:
             all_results = {}
     else:
@@ -167,7 +167,7 @@ def find_peak_segmentation():
                             print(f"⚠️ Αποτυχία ανάγνωσης {year}/{eventJson}/{stationJson} {fname}: {e}")
                             continue
 
-                        channelSnrJson = chans.get("HHZ", 0).get("snr",0)
+                        channelSnrJson = chans.get("HHZ", 0).get("snr", 0)
 
                         for tr in st:
                             try:
@@ -177,18 +177,24 @@ def find_peak_segmentation():
                                 # --- Βήμα 1: Εύρεση AIC έναρξης ---
                                 start_of_event_idx, _ = aic_picker(data)
                                 if start_of_event_idx is None:
-                                    # --- Καταγραφή AIC αποτυχίας ---
+                                    # --- Καταγραφή AIC αποτυχίας (ΝΕΑ ΔΟΜΗ) ---
                                     try:
                                         aic_failures = load_json(AIC_FAIL_JSON) if os.path.exists(AIC_FAIL_JSON) else {}
                                     except Exception:
                                         aic_failures = {}
 
+                                    # root counter
+                                    current_count = aic_failures.get("count", 0)
+
+                                    # year → event → station (no channel)
                                     year_dict = aic_failures.setdefault(str(year), {})
                                     event_dict = year_dict.setdefault(eventJson, {})
-                                    failed_channels = event_dict.setdefault(stationJson, [])
-                                    ch_id = tr.id.split('.')[-1]
-                                    if ch_id not in failed_channels:
-                                        failed_channels.append(ch_id)
+
+                                    # αν ο σταθμός δεν υπάρχει ήδη, πρόσθεσέ τον και αύξησε count
+                                    if stationJson not in event_dict:
+                                        event_dict[stationJson] = True
+                                        aic_failures["count"] = current_count + 1
+
                                     save_json(AIC_FAIL_JSON, aic_failures)
                                     continue
 
@@ -216,7 +222,7 @@ def find_peak_segmentation():
                                 else:
                                     peak_amplitude_idx = peaks[0]
                                     peak_amplitude_idx = peak_amplitude_idx + start_of_event_idx
-                                    #peak_amplitude_idx = start_of_event_idx + buffer_samples + main_peak
+                                    # peak_amplitude_idx = start_of_event_idx + buffer_samples + main_peak
 
                                 # --- Βήμα 6: Υπολογισμός χρόνων ---
                                 start_of_event_datetime = tr.stats.starttime + start_of_event_idx / sr
@@ -238,7 +244,7 @@ def find_peak_segmentation():
                                         break
                                 if end_of_event_idx is None:
                                     end_of_event_idx = len(norm_env) - 1
-                                    
+
                                 end_of_event_idx = end_of_event_idx + start_of_event_idx
                                 end_of_event_time = tr.stats.starttime + end_of_event_idx / sr
 
@@ -295,6 +301,7 @@ def find_peak_segmentation():
     print(f"\n✅ Ολοκληρώθηκε η καταγραφή όλων των σταθμών στο: {OUTPUT_JSON}")
 
 
+
 # ==========================================================
 # ✅ ΦΑΣΗ 2: Δημιουργία αποσπασμάτων με σταθερό duration
 # ==========================================================
@@ -314,7 +321,7 @@ def create_peak_segmentation_files(min_snr: float, min_duration: float, max_dura
     from main import LOG_DIR, BASE_DIR
 
     # --- Paths ---
-    PS_JSON = os.path.join(LOG_DIR, "PS_boundaries.json")
+    PS_JSON = os.path.join(LOG_DIR, "boundaries.json")
     if not os.path.exists(PS_JSON):
         print(f"❌ Δεν βρέθηκε το {PS_JSON}")
         return
@@ -432,7 +439,7 @@ def plot_peak_segmentation_duration_distribution(bin_size: float = 5.0):
     """
     Υπολογίζει και σχεδιάζει την κατανομή (ραβδόγραμμα)
     των duration_of_peak_segment τιμών ΜΟΝΟ για τα Z κανάλια (π.χ. HHZ, BHZ, EHZ)
-    από το αρχείο PS_boundaries.json και το αποθηκεύει στο Logs/station-duration-distribution.png
+    από το αρχείο boundaries.json και το αποθηκεύει στο Logs/station-duration-distribution.png
     """
     import os
     import numpy as np
@@ -440,7 +447,7 @@ def plot_peak_segmentation_duration_distribution(bin_size: float = 5.0):
     from main import LOG_DIR
 
     # --- Ανάγνωση αρχείου ---
-    json_path = os.path.join(LOG_DIR, "PS_boundaries.json")
+    json_path = os.path.join(LOG_DIR, "boundaries.json")
     if not os.path.exists(json_path):
         print(f"❌ Δεν βρέθηκε το αρχείο: {json_path}")
         return
@@ -483,9 +490,9 @@ def plot_peak_segmentation_duration_distribution(bin_size: float = 5.0):
     plt.figure(figsize=(10, 6))
     counts, bins, patches = plt.hist(durations, bins=bins, color="teal", edgecolor="black", alpha=0.8)
 
-    plt.title("Distribution Peak Segmentation Duration (μόνο Z κανάλια)", fontsize=14, fontweight="bold")
-    plt.xlabel("Διάρκεια (δευτερόλεπτα)", fontsize=12)
-    plt.ylabel("Πλήθος σταθμών", fontsize=12)
+    plt.title("Distribution Peak Segmentation Duration (only Z channels)", fontsize=14, fontweight="bold")
+    plt.xlabel("Duration(sec)", fontsize=12)
+    plt.ylabel("Nof Stations", fontsize=12)
     plt.grid(axis="y", linestyle="--", alpha=0.6)
 
     # Προσθήκη labels πάνω από κάθε μπάρα
@@ -498,7 +505,7 @@ def plot_peak_segmentation_duration_distribution(bin_size: float = 5.0):
     # --- Αποθήκευση ---
     output_png = os.path.join(LOG_DIR, "station-duration-distribution.png")
     plt.savefig(output_png, dpi=200)
-    print(f"💾 Αποθηκεύτηκε το ραβδόγραμμα στο {output_png}")
+    print(f"💾 Histogram stored at {output_png}")
 
     plt.show()
 
@@ -506,7 +513,7 @@ def plot_clean_event_duration_distribution(bin_size: float = 5.0):
     """
     Υπολογίζει και σχεδιάζει την κατανομή (ραβδόγραμμα)
     των event_duration_time τιμών ΜΟΝΟ για τα Z κανάλια (HHZ, BHZ, EHZ)
-    από το αρχείο PS_boundaries.json και το αποθηκεύει στο Logs/clean-event-duration-distribution.png
+    από το αρχείο boundaries.json και το αποθηκεύει στο Logs/clean-event-duration-distribution.png
     """
     import os
     import numpy as np
@@ -514,7 +521,7 @@ def plot_clean_event_duration_distribution(bin_size: float = 5.0):
     from main import LOG_DIR
 
     # --- Ανάγνωση αρχείου ---
-    json_path = os.path.join(LOG_DIR, "PS_boundaries.json")
+    json_path = os.path.join(LOG_DIR, "boundaries.json")
     if not os.path.exists(json_path):
         print(f"❌ Δεν βρέθηκε το αρχείο: {json_path}")
         return
@@ -582,7 +589,7 @@ def plot_clean_event_duration_distribution(bin_size: float = 5.0):
 def plot_snr_distribution(bin_size: float = 3.0):
     """
     Υπολογίζει και σχεδιάζει την κατανομή (ραβδόγραμμα)
-    των minimum_station_snr τιμών από το αρχείο PS_boundaries.json
+    των minimum_station_snr τιμών από το αρχείο boundaries.json
     και το αποθηκεύει στο Logs/snr-distribution.png
     """
     import os
@@ -591,7 +598,7 @@ def plot_snr_distribution(bin_size: float = 3.0):
     from main import LOG_DIR
 
     # --- Διαδρομή αρχείου ---
-    json_path = os.path.join(LOG_DIR, "PS_boundaries.json")
+    json_path = os.path.join(LOG_DIR, "boundaries.json")
 
     # --- Έλεγχος ύπαρξης ---
     if not os.path.exists(json_path):
@@ -624,7 +631,7 @@ def plot_snr_distribution(bin_size: float = 3.0):
                     continue
 
     if not snr_values:
-        print("❌ Δεν βρέθηκαν τιμές minimum_station_snr στο PS_boundaries.json")
+        print("❌ Δεν βρέθηκαν τιμές minimum_station_snr στο boundaries.json")
         return
 
     # --- Δημιουργία bins ---
@@ -638,8 +645,8 @@ def plot_snr_distribution(bin_size: float = 3.0):
     )
 
     plt.title("Distribution SNR per station", fontsize=14, fontweight="bold")
-    plt.xlabel("SNR (τιμή ανά σταθμό)", fontsize=12)
-    plt.ylabel("Πλήθος σταθμών", fontsize=12)
+    plt.xlabel("SNR (value per station)", fontsize=12)
+    plt.ylabel("Nof Stations", fontsize=12)
     plt.grid(axis="y", linestyle="--", alpha=0.6)
 
     # Προσθήκη labels πάνω από κάθε μπάρα
@@ -659,14 +666,128 @@ def plot_snr_distribution(bin_size: float = 3.0):
     # --- Αποθήκευση ---
     output_png = os.path.join(LOG_DIR, "snr-distribution.png")
     plt.savefig(output_png, dpi=200)
-    print(f"💾 Αποθηκεύτηκε το ραβδόγραμμα στο {output_png}")
+    print(f"💾 Histogram stored at {output_png}")
 
     plt.show()
 
+def count_nof_training_stations(
+        min_snr: float,
+        max_ps_duration: float,
+        min_clean_event_duration: float):
+    """
+    Classifies Z-channel signals from PS_boundaries.json into:
+
+    A) Training-eligible:
+         - minimum_station_snr >= min_snr
+         - peak_segment_duration_time <= max_ps_duration
+         - clean_event_duration_time >= min_clean_event_duration
+
+    B1) High SNR (>= min_snr) but TOO LONG peak segment (> max_ps_duration s)
+    B2) Low SNR (< min_snr)
+    B3) High SNR (>= min_snr) but TOO SHORT clean event (< min_clean_event_duration s)
+    """
+
+    import os
+    from main import LOG_DIR
+
+    json_path = os.path.join(LOG_DIR, "PS_boundaries.json")
+
+    if not os.path.exists(json_path):
+        print(f"❌ File not found: {json_path}")
+        return
+
+    data = load_json(json_path)
+
+    # --- Counters ---
+    to_training = 0
+    high_snr_and_high_ps_duration = 0
+    low_snr = 0
+    high_snr_but_low_clean_event = 0
+
+    # --- Traverse structure: year → event → station → channel ---
+    for year, events in data.items():
+        if year == "total_nof_stations":
+            continue
+        if not isinstance(events, dict):
+            continue
+
+        for event_name, stations in events.items():
+            for station_name, channels in stations.items():
+
+                # Station SNR
+                station_snr = channels.get("minimum_station_snr")
+                if station_snr is None:
+                    continue
+                station_snr = float(station_snr)
+
+                # --- For every Z channel ---
+                for ch_name, ch_info in channels.items():
+                    if not isinstance(ch_info, dict):
+                        continue
+                    if not ch_name.endswith("Z"):
+                        continue
+
+                    # --- Peak Segmentation Duration ---
+                    ps_dur = ch_info.get("peak_segment_duration_time")
+                    if ps_dur is None:
+                        continue
+                    try:
+                        ps_dur = float(ps_dur)
+                    except:
+                        continue
+
+                    # --- Clean Event Duration ---
+                    clean_dur = ch_info.get("clean_event_duration_time")
+                    if clean_dur is None:
+                        continue
+                    try:
+                        clean_dur = float(clean_dur)
+                    except:
+                        continue
+
+                    # ------------------------------------------------------
+                    # CATEGORY B2 — LOW SNR (< min_snr)
+                    # ------------------------------------------------------
+                    if station_snr < min_snr:
+                        low_snr += 1
+                        continue
+
+                    # ------------------------------------------------------
+                    # CATEGORY B1 — HIGH SNR (>= min_snr) BUT TOO LONG PS duration (> max_ps_duration)
+                    # ------------------------------------------------------
+                    if ps_dur > max_ps_duration:
+                        high_snr_and_high_ps_duration += 1
+                        continue
+
+                    # ------------------------------------------------------
+                    # CATEGORY B3 — HIGH SNR (>= min_snr) BUT CLEAN EVENT TOO SHORT (< min_clean_event_duration)
+                    # ------------------------------------------------------
+                    if clean_dur < min_clean_event_duration:
+                        high_snr_but_low_clean_event += 1
+                        continue
+
+                    # ------------------------------------------------------
+                    # CATEGORY A — Training-eligible signals
+                    # ------------------------------------------------------
+                    if (
+                        station_snr >= min_snr and
+                        ps_dur <= max_ps_duration and
+                        clean_dur >= min_clean_event_duration
+                    ):
+                        to_training += 1
+
+    # --- PRINT REPORT ---
+    print("\n📊 *** SIGNAL CLASSIFICATION REPORT ***")
+    print(f"⚠ NOT USED SET : SNR ≥ {min_snr} & PS_duration_time > {max_ps_duration} sec : {high_snr_and_high_ps_duration}")
+    print(f"⚠ NOT USED SET : SNR < {min_snr} : {low_snr}")
+    print(f"⚠ NOT USED SET : SNR ≥ {min_snr} & clean_event_duration_time < {min_clean_event_duration} sec : {high_snr_but_low_clean_event}")
+    print("------------------------------------------------------------------------------------------------------------")
+    print(f"✔ TRAINING SET : SNR ≥ {min_snr} & PS_duration_time ≤ {max_ps_duration} sec "
+          f"& clean_event_duration_time ≥ {min_clean_event_duration} sec : {to_training}")
 
 # ==========================================================
 if __name__ == "__main__":
-    find_peak_segmentation()
+    find_boundaries()
     #plot_clean_event_duration_distribution()
     #plot_peak_segmentation_duration_distribution()
     #plot_snr_distribution()
