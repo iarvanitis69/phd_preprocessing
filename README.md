@@ -395,7 +395,9 @@ consistent dataset for downstream processing pipelines such as GreensonNet.
 ![img.png](images/signal_with_boundaries.png)
 
 After computing the segmentation boundaries for all stations, the next step is to analyze the distribution of the 
-extracted parameters.
+extracted parameters. The distributions that we generate — the histograms and overall statistical spreads — will help us 
+determine which signals are suitable for inclusion in the training set and which ones should be excluded.
+
 In the first stage, we generate the distribution — specifically, the histogram — of the Clean Event Duration Time for 
 all stations. This allows us to identify whether there are stations whose clean event duration falls below a certain 
 threshold, which determines whether they are eligible for inclusion in the Training Set.
@@ -415,8 +417,23 @@ the dataset before it is used in downstream processing.
 
 ![img.png](images/snr_distribution.png)
 
-These diagnostic plots serve as an important quality-control step, ensuring that the seismic signals exhibit consistent 
-behaviour and that all stations meet the required signal-to-noise thresholds.
+Finally, we compute the depth distribution of the seismic events for all recorded seismic waves. The resulting plot of 
+the depth distribution is shown below.
+
+![img.png](images/depth_distribution.png)
+
+### Selection of training set
+From the above plots, we observe that the majority of seismic events have depths ranging from approximately 1 km to 24 km.
+Additionally, the signals selected for GreensonNet must be clear and strong enough to stand out from the background noise.
+For this reason, we retain only the signals with an SNR greater than 5.From the peak-segmentation distribution, we 
+conclude that most events exhibit a peak-segment duration below 30 seconds, while the clean-event duration for the 
+majority of signals is greater than 30 seconds. For these reasons, we select only the signals that satisfy the following 
+criteria:
+
+ - SNR >= 5
+ - Peak segment duration <=30 secs
+ - Event duration >=30 secs
+ - Depth >1 Km & Depth <24 Km
 
 ### AIC failure
 In some seismic recordings, the waveform morphology is such that the AIC (Akaike Information Criterion) algorithm fails 
@@ -441,27 +458,57 @@ detection was unsuccessful. This mechanism ensures that problematic waveforms ar
 preprocessing pipeline remains robust when restarting or resuming execution and AIC failures can be reviewed later for 
 diagnostic or quality-control purposes.
 
+### Create cutted signal files
+Using the function create_cutted_signal_files, we start from the original file with the extension
+_demeanDetrend_IC_BPF.mseed and generate three new files:
 
-In the second stage, the function create_peak_segmentation() files is executed, which takes as input the 
-*_dmean_detrend_IC_BPF.mseed files and produces as output the *_dmean_detrend_IC_BPF_PS.mseed files.
+ - _demeanDetrend_IC_BPF_PSfixed.mseed      
+ - _demeanDetrend_IC_BPF_PSvariant.mseed
+ - _demeanDetrend_IC_BPF_WholeEvent.mseed
+
+Each file represents a different type of extracted waveform segment:
+
+1. PSfixed.mseed
+
+This file is created for all accepted stations and all accepted channels.
+All signals in this category have exactly the same length, equal to the largest peak-segmentation duration found among 
+all valid waveforms. In other words, every PSfixed file is normalized to the same duration, determined by the longest 
+peak-segment observed in the dataset.
+
+2. PSvariant.mseed
+
+This file is also created for every accepted station and channel, but in this case each waveform retains its own 
+individual peak-segmentation length. Thus, unlike PSfixed, every PSvariant file may have a different duration, depending 
+on the true peak-segment of the corresponding signal.
+
+3. WholeEvent.mseed
+
+This file contains the entire seismic event, cut from the onset of the wave up to the event’s end (as defined by the 
+Hilbert-based envelope decay to the noise level). In this version, the full event window is preserved.
+
+Thus, from each initial .mseed file, the function produces three derived .mseed files, corresponding to the fixed 
+peak-segment, the variant peak-segment, and the full event window.
 
 ### The used stations on training (training set)
 The function COUNT NOF TRAINING STATIONS determines the final number of stations that will be used in the Training Set.
-This function classifies each station based on three criteria:
+This function classifies each station based on four criteria:
 
- - the Minimum SNR,
- - the Maximum Peak Segment Duration, and
- - the Minimum Clean Event Duration.
+ - the Minimum SNR is 5, 
+ - the Maximum Peak Segment Duration is 30 secs, 
+ - the Minimum Clean Event Duration is minimum of 30 secs and
+ - The Depth should be 1Km<=Depth<=24Km
 
 Using these thresholds, the function decides which seismic signals are suitable for inclusion in the Training Set.
 
+#### The count_nof_training_stations_and_create_json_files()
+This function calculates the size of the training set stations
 
 📊 *** SIGNAL CLASSIFICATION REPORT ***
 ⚠ NOT USED SET : SNR ≥ 5 & PS_duration_time > 30 sec : 594
 ⚠ NOT USED SET : SNR < 5 : 9025
 ⚠ NOT USED SET : SNR ≥ 5 & clean_event_duration_time < 30 sec : 1
-------------------------------------------------------------------------------------------------------------
-✔ TRAINING SET : SNR ≥ 5 & PS_duration_time ≤ 30 sec & clean_event_duration_time ≥ 30 sec : 7836
+-------------------------------------------------------------------------------------------------------------------
+✔ TRAINING SET : SNR ≥ 5 & PS_duration_time ≤ 30 sec & clean_event_duration_time ≥ 30 sec & 1Km<=Depth<=24Km : 7836
 
 
 

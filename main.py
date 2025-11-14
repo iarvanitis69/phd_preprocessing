@@ -56,7 +56,7 @@ def main():
     #filter_all_files()
 
     # print("🔍 Βρίσκει το pick segmentation...")
-    find_boundaries()
+    #find_boundaries()
 
     # print("🔍 Create clean event distribution...")
     #plot_clean_event_duration_distribution()
@@ -67,8 +67,9 @@ def main():
     # print("🔍 Create SNR distribution...")
     #plot_snr_distribution()
 
+
     # print("🔍 Count nof training stations...")
-    #count_nof_training_stations(5,30)
+    #count_nof_training_stations(5,30,30)
 
     # print("🔍 Create clean event distribution...")
     #create_peak_segmentation_files(5,30)
