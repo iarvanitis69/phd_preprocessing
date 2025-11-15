@@ -171,12 +171,6 @@ def find_boundaries():
                         total_samples = len(data)
                         total_signal_time = total_samples / sr
 
-                        # Store total info for every channel
-                        station_dict[ch_id] = {
-                            "total_signal_nof_samples": int(total_samples),
-                            "total_signal_time": f"{total_signal_time:.2f}"
-                        }
-
                         # HHZ ONLY → store boundaries
                         if ch_id != "HHZ":
                             continue
