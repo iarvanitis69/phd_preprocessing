@@ -11,7 +11,7 @@ from gaps import find_files_for_gaps
 from glitches import find_files_for_glitches_parallel
 from instrument_correction import instrument_correction
 from overlaps import find_files_for_overlaps
-from boundaries_and_cut_signals import  find_boundaries
+from boundaries_HHZ import  find_boundaries
 from snr import find_snr
 from missingFiles import find_stations_with_issues
 
@@ -67,26 +67,20 @@ def main():
     # print("🔍 Create SNR distribution...")
     #plot_snr_distribution()
 
+    # print("🔍 Create Depth distribution...")
+    # plot_depth_distribution()
 
-    # print("🔍 Count nof training stations...")
-    #count_nof_training_stations(5,30,30)
+    # print("🔍 Find cutting info...")
+    #find_cutting_info(5, 30, 30, 1, 24)
 
-    # print("🔍 Create clean event distribution...")
-    #create_peak_segmentation_files(5,30)
+    # print("🔍 Create cutting stations..")
+    #create_cutting_signals(5, 30, 30, 1,24)
 
     # print("🔍 Conversion to LQT")
-    #convert_to_LQT()
+    #convert_to_LQT(5, 30, 30, 1, 24)
 
     # print("🔍 Normalize Z score all files...")
-    #normalize_Z_score()
-
-
-
-
-
-
-
-
+    #normalize_Z_score(5, 30, 30, 1, 24)
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()  # προαιρετικό αλλά ασφαλές

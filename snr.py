@@ -54,15 +54,6 @@ def compute_snr(edge_max: float, middle_max: float) -> float:
     eps = 1e-12
     return round(float(middle_max / (edge_max + eps)),2)
 
-def load_json(path: str) -> dict:
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
 def save_json_atomic(path: str, data: dict):
     if "Events" not in data or not isinstance(data["Events"], dict):
         print(f"⚠️ Παράλειψη αποθήκευσης: λείπει ή είναι άκυρο το 'Events' στο snr_db.")
@@ -180,6 +171,7 @@ def find_snr():
     from main import BASE_DIR, LOG_DIR
     excluded = load_excluded_stations(LOG_DIR)
     snr_file = os.path.join(LOG_DIR, "snr.json")
+    from utils import load_json
     snr_db = load_json(snr_file)
 
     if "Events" not in snr_db:
