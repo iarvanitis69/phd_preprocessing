@@ -5,6 +5,8 @@ import os
 import json
 import numpy as np
 from obspy import read, Trace, Stream
+# from scipy.stats import deprmsg
+
 
 #from main import LOG_DIR
 
@@ -471,345 +473,15 @@ def aic_picker(trace_data):
     return min_idx, aic
 
 
-def plot_peak_segmentation_duration_distribution(bin_size: float = 5.0):
-    """
-    Υπολογίζει και σχεδιάζει την κατανομή (ραβδόγραμμα)
-    των duration_of_peak_segment τιμών ΜΟΝΟ για τα Z κανάλια (π.χ. HHZ, BHZ, EHZ)
-    από το αρχείο boundaries.json και το αποθηκεύει στο Logs/station-duration-distribution.png
-    """
-    import os
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from main import LOG_DIR
 
-    # --- Ανάγνωση αρχείου ---
-    json_path = os.path.join(LOG_DIR, "boundaries.json")
-    if not os.path.exists(json_path):
-        print(f"❌ Δεν βρέθηκε το αρχείο: {json_path}")
-        return
 
-    data = load_json(json_path)
-    durations = []
-
-    # --- Διασχίζουμε τη δομή: έτος → event → σταθμό → κανάλι ---
-    for year, events in data.items():
-        if year == "total_nof_stations":
-            continue
-        for event_name, stations in events.items():
-            for station_name, channels in stations.items():
-                if not isinstance(channels, dict):
-                    continue
-
-                # Μόνο τα κανάλια Z (HHZ, BHZ, EHZ)
-                for ch_name, ch_info in channels.items():
-                    if not isinstance(ch_info, dict):
-                        continue
-                    if not ch_name.endswith("Z"):
-                        continue
-
-                    dur = ch_info.get("peak_segment_duration_time")
-                    if dur is None:
-                        continue
-
-                    try:
-                        durations.append(float(dur))
-                    except ValueError:
-                        continue
-
-    if not durations:
-        print("❌ Δεν βρέθηκαν τιμές duration_of_peak_segment για κανάλια Z")
-        return
-
-    # --- Bins ---
-    max_value = max(durations)
-    bins = np.arange(0, max_value + bin_size, bin_size)
-
-    # --- Ραβδόγραμμα ---
-    plt.figure(figsize=(10, 6))
-    counts, bins, patches = plt.hist(durations, bins=bins, color="teal", edgecolor="black", alpha=0.8)
-
-    plt.title("Distribution Peak Segmentation Duration (only Z channels)", fontsize=14, fontweight="bold")
-    plt.xlabel("Duration(sec)", fontsize=12)
-    plt.ylabel("Nof Stations", fontsize=12)
-    plt.grid(axis="y", linestyle="--", alpha=0.6)
-
-    # Προσθήκη labels πάνω από κάθε μπάρα
-    for c, p in zip(counts, patches):
-        if c > 0:
-            plt.text(p.get_x() + p.get_width() / 2, c, f"{int(c)}", ha="center", va="bottom", fontsize=9)
-
-    plt.tight_layout()
-
-    # --- Αποθήκευση ---
-    output_png = os.path.join(LOG_DIR, "station-duration-distribution.png")
-    plt.savefig(output_png, dpi=200)
-    print(f"💾 Histogram stored at {output_png}")
-
-    plt.show()
-
-def plot_clean_event_duration_distribution(bin_size: float = 5.0):
-    """
-    Υπολογίζει και σχεδιάζει την κατανομή (ραβδόγραμμα)
-    των event_duration_time τιμών ΜΟΝΟ για τα Z κανάλια (HHZ, BHZ, EHZ)
-    από το αρχείο boundaries.json και το αποθηκεύει στο Logs/clean-event-duration-distribution.png
-    """
-    import os
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from main import LOG_DIR
-
-    # --- Ανάγνωση αρχείου ---
-    json_path = os.path.join(LOG_DIR, "boundaries.json")
-    if not os.path.exists(json_path):
-        print(f"❌ Δεν βρέθηκε το αρχείο: {json_path}")
-        return
-
-    data = load_json(json_path)
-    durations = []
-
-    # --- Διασχίζουμε τη δομή: year → event → station → channel ---
-    for year, events in data.items():
-        if year == "total_nof_stations":
-            continue  # skip global key
-
-        for event_name, stations in events.items():
-            for station_name, channels in stations.items():
-                if not isinstance(channels, dict):
-                    continue
-
-                # μόνο τα Z κανάλια
-                for ch_name, ch_info in channels.items():
-                    if not isinstance(ch_info, dict):
-                        continue
-                    if not ch_name.endswith("Z"):
-                        continue
-
-                    dur = ch_info.get("clean_event_duration_time")
-                    if dur is None:
-                        continue
-
-                    try:
-                        durations.append(float(dur))
-                    except ValueError:
-                        continue
-
-    if not durations:
-        print("❌ Δεν βρέθηκαν τιμές event_duration_time για κανάλια Z")
-        return
-
-    # --- Bins ---
-    max_value = max(durations)
-    bins = np.arange(0, max_value + bin_size, bin_size)
-
-    # --- Ραβδόγραμμα ---
-    plt.figure(figsize=(10, 6))
-    counts, bins, patches = plt.hist(durations, bins=bins, color="purple", edgecolor="black", alpha=0.8)
-
-    plt.title("Distribution of Clean Event Duration (Z channels only)", fontsize=14, fontweight="bold")
-    plt.xlabel("Duration (seconds)", fontsize=12)
-    plt.ylabel("Number of stations", fontsize=12)
-    plt.grid(axis="y", linestyle="--", alpha=0.6)
-
-    # αριθμοί πάνω από κάθε μπάρα
-    for c, p in zip(counts, patches):
-        if c > 0:
-            plt.text(p.get_x() + p.get_width() / 2, c, f"{int(c)}", ha="center", va="bottom", fontsize=9)
-
-    plt.tight_layout()
-
-    # --- Αποθήκευση ---
-    output_png = os.path.join(LOG_DIR, "clean-event-duration-distribution.png")
-    plt.savefig(output_png, dpi=200)
-    print(f"💾 Αποθηκεύτηκε στο {output_png}")
-
-    plt.show()
-
-def plot_snr_distribution(bin_size: float = 3.0):
-    """
-    Υπολογίζει και σχεδιάζει την κατανομή (ραβδόγραμμα)
-    των minimum_station_snr τιμών από το αρχείο boundaries.json
-    και το αποθηκεύει στο Logs/snr-distribution.png
-    """
-    import os
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from main import LOG_DIR
-
-    # --- Διαδρομή αρχείου ---
-    json_path = os.path.join(LOG_DIR, "boundaries.json")
-
-    # --- Έλεγχος ύπαρξης ---
-    if not os.path.exists(json_path):
-        print(f"❌ Δεν βρέθηκε το αρχείο: {json_path}")
-        return
-
-    # --- Ανάγνωση δεδομένων ---
-    data = load_json(json_path)
-    snr_values = []
-
-    # --- Δομή: έτος → γεγονός → σταθμός ---
-    for year, events in data.items():
-        if not isinstance(events, dict):
-            continue
-        for event_name, stations in events.items():
-            if not isinstance(stations, dict):
-                continue
-            for station_name, station_info in stations.items():
-                if not isinstance(station_info, dict):
-                    continue
-
-                # Αν υπάρχει τιμή minimum_station_snr στο επίπεδο σταθμού
-                min_snr = station_info.get("minimum_station_snr")
-                if min_snr is None:
-                    continue
-
-                try:
-                    snr_values.append(float(min_snr))
-                except (TypeError, ValueError):
-                    continue
-
-    if not snr_values:
-        print("❌ Δεν βρέθηκαν τιμές minimum_station_snr στο boundaries.json")
-        return
-
-    # --- Δημιουργία bins ---
-    max_value = max(snr_values)
-    bins = np.arange(0, max_value + bin_size, bin_size)
-
-    # --- Ραβδόγραμμα ---
-    plt.figure(figsize=(10, 6))
-    counts, bins, patches = plt.hist(
-        snr_values, bins=bins, color="orange", edgecolor="black", alpha=0.8
-    )
-
-    plt.title("Distribution SNR per station", fontsize=14, fontweight="bold")
-    plt.xlabel("SNR (value per station)", fontsize=12)
-    plt.ylabel("Nof Stations", fontsize=12)
-    plt.grid(axis="y", linestyle="--", alpha=0.6)
-
-    # Προσθήκη labels πάνω από κάθε μπάρα
-    for c, p in zip(counts, patches):
-        if c > 0:
-            plt.text(
-                p.get_x() + p.get_width() / 2,
-                c,
-                f"{int(c)}",
-                ha="center",
-                va="bottom",
-                fontsize=9,
-            )
-
-    plt.tight_layout()
-
-    # --- Αποθήκευση ---
-    output_png = os.path.join(LOG_DIR, "snr-distribution.png")
-    plt.savefig(output_png, dpi=200)
-    print(f"💾 Histogram stored at {output_png}")
-
-    plt.show()
-
-
-def plot_depth_distribution(bin_size: float = 1.0):
-    """
-    Υπολογίζει και σχεδιάζει την κατανομή (ραβδόγραμμα)
-    των depth_km τιμών για ΟΛΑ τα events.
-
-    Για κάθε event ανοίγει:
-        Events/<YEAR>/<EVENT>/info.json
-
-    Η τιμή βάθους βρίσκεται στο πεδίο:
-        "depth_km"
-
-    Το γράφημα αποθηκεύεται στο:
-        Logs/depth-distribution.png
-    """
-
-    import os
-    import json
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from main import BASE_DIR, LOG_DIR
-
-    depth_values = []
-
-    # --- Σάρωση όλων των ετών ---
-    for year in os.listdir(BASE_DIR):
-        year_path = os.path.join(BASE_DIR, year)
-        if not os.path.isdir(year_path):
-            continue
-
-        # --- Σάρωση όλων των events ---
-        for event_name in os.listdir(year_path):
-            event_path = os.path.join(year_path, event_name)
-            if not os.path.isdir(event_path):
-                continue
-
-            # Αναζήτηση του info.json στο event
-            info_path = os.path.join(event_path, "info.json")
-            if not os.path.exists(info_path):
-                continue
-
-            # --- Ανάγνωση depth από info.json ---
-            try:
-                with open(info_path, "r", encoding="utf-8") as f:
-                    info = json.load(f)
-
-                # Το σωστό πεδίο σύμφωνα με τα λεγόμενά σου
-                depth = info.get("depth_km")
-
-                if depth is None:
-                    continue
-
-                depth_values.append(float(depth))
-
-            except Exception as e:
-                print(f"⚠️ Αποτυχία ανάγνωσης {info_path}: {e}")
-                continue
-
-    if not depth_values:
-        print("❌ Δεν βρέθηκαν τιμές depth_km σε κανένα info.json")
-        return
-
-    # --- Δημιουργία bins ---
-    max_value = max(depth_values)
-    bins = np.arange(0, max_value + bin_size, bin_size)
-
-    # --- Ραβδόγραμμα ---
-    plt.figure(figsize=(10, 6))
-    counts, bins, patches = plt.hist(
-        depth_values, bins=bins, color="steelblue", edgecolor="black", alpha=0.85
-    )
-
-    plt.title("Depth Distribution of All Events", fontsize=14, fontweight="bold")
-    plt.xlabel("Depth (km)", fontsize=12)
-    plt.ylabel("Number of Events", fontsize=12)
-    plt.grid(axis="y", linestyle="--", alpha=0.6)
-
-    # labels πάνω από κάθε μπάρα
-    for c, p in zip(counts, patches):
-        if c > 0:
-            plt.text(
-                p.get_x() + p.get_width() / 2,
-                c,
-                f"{int(c)}",
-                ha="center",
-                va="bottom",
-                fontsize=9,
-            )
-
-    plt.tight_layout()
-
-    # --- Αποθήκευση ---
-    output_png = os.path.join(LOG_DIR, "depth-distribution.png")
-    plt.savefig(output_png, dpi=200)
-    print(f"💾 Depth histogram stored at: {output_png}")
-
-    plt.show()
 
 
 def count_nof_training_stations_and_create_json_files(
         min_snr: float,
-        max_ps_duration: float):
+        max_ps_duration: float,
+        depthMin: float,
+        depthMax: float):
 
     """
     Classifies Z-channel signals from boundaries.json into:
@@ -818,12 +490,12 @@ def count_nof_training_stations_and_create_json_files(
          - minimum_station_snr >= min_snr
          - peak_segment_duration_time <= max_ps_duration
          - clean_event_duration_time >= min_clean_event_duration
-         - 1Km <= Depth <= 24Km
+         - depthMin <= Depth <= depthMax
 
-    B1) High SNR (>= min_snr) & TOO LONG peak segment (> max_ps_duration s)
+    B1) High SNR (>= min_snr) & TOO LONG peak segment (> max_ps_duration s) and depth in bounds
     B2) Low SNR (< min_snr)
     B3) High SNR (>= min_snr) & TOO SHORT clean event (< min_clean_event_duration s)
-    B4) High SNR (>= min_snr) & (Depth <depthmin Km or Depth >depthMax Km)
+    B4) High SNR (>= min_snr) & (Depth < depthMin km or Depth > depthMax km)
 
     Produces:
       • trainingSet_SNR_GE_<min_snr>_PS_duration_LE_<max_ps_duration>.json
@@ -833,28 +505,30 @@ def count_nof_training_stations_and_create_json_files(
     import os
     from main import LOG_DIR, BASE_DIR
 
+    # Threshold για clean_event_duration (ίσο με max_ps_duration όπως πριν)
     min_clean_event_duration = max_ps_duration
 
     # --- Paths ---
-    boundaries_path = os.path.join(LOG_DIR, "boundaries.json")
-    if not os.path.exists(boundaries_path):
-        print(f"❌ File not found: {boundaries_path}")
+    json_path = os.path.join(LOG_DIR, "boundaries.json")
+
+    if not os.path.exists(json_path):
+        print(f"❌ File not found: {json_path}")
         return
 
-    data = load_json(boundaries_path)
+    data = load_json(json_path)
 
-    # --- New JSONs ---
+    # --- New JSON files ---
     training_json = {}
     potential_json = {}
 
     # --- Counters ---
     to_training = 0
-    high_snr_and_high_ps_duration = 0
-    low_snr = 0
-    high_snr_but_low_clean_event = 0
-    bad_depth = 0
+    high_snr_and_high_ps_duration_and_depth_in_bounds = 0  # B1
+    low_snr = 0                        # B2
+    high_snr_but_low_clean_event = 0   # B3
+    depth_out_of_range = 0             # B4
 
-    # --- Traverse data structure ---
+    # --- Traverse structure: year → event → station → channel ---
     for year, events in data.items():
 
         if year == "total_nof_stations":
@@ -863,41 +537,41 @@ def count_nof_training_stations_and_create_json_files(
             continue
 
         for event_name, stations in events.items():
+            if not isinstance(stations, dict):
+                continue
 
-            # ---------------------------------------------------
-            # LOAD DEPTH FROM info.json (Events/<year>/<event>)
-            # ---------------------------------------------------
+            # --------------------------------------------------
+            # ΒΡΕΣ ΤΟ ΒΑΘΟΣ ΤΟΥ EVENT ΑΠΟ info.json
+            # --------------------------------------------------
+            depth_km = None
             info_path = os.path.join(BASE_DIR, str(year), event_name, "info.json")
-            if not os.path.exists(info_path):
-                # if no info.json → skip entire event
-                continue
-
-            try:
-                info = load_json(info_path)
-            except:
-                continue
-
-            # Support both "Depth_km" and "depth_km"
-            depth = info.get("Depth_km") or info.get("depth_km")
-            if depth is None:
-                continue
-
-            try:
-                depth = float(depth)
-            except:
-                continue
+            if os.path.exists(info_path):
+                try:
+                    info_data = load_json(info_path)
+                    # Προσπάθησε με διαφορετικά πιθανά κλειδιά
+                    depth_km = (
+                        info_data.get("Depth_km")
+                        or info_data.get("Depth-km")
+                        or info_data.get("depth_km")
+                        or info_data.get("depth-km")
+                    )
+                    if depth_km is not None:
+                        depth_km = float(depth_km)
+                except Exception as e:
+                    print(f"⚠️ Could not read depth from {info_path}: {e}")
+                    depth_km = None
 
             for station_name, channels in stations.items():
+                if not isinstance(channels, dict):
+                    continue
 
+                # Station SNR
                 station_snr = channels.get("minimum_station_snr")
                 if station_snr is None:
                     continue
-                try:
-                    station_snr = float(station_snr)
-                except:
-                    continue
+                station_snr = float(station_snr)
 
-                # For every Z-channel
+                # --- For every Z channel ---
                 for ch_name, ch_info in channels.items():
 
                     if not isinstance(ch_info, dict):
@@ -905,7 +579,7 @@ def count_nof_training_stations_and_create_json_files(
                     if not ch_name.endswith("Z"):
                         continue
 
-                    # Peak Segment Duration
+                    # --- Peak Segmentation Duration ---
                     ps_dur = ch_info.get("peak_segment_duration_time")
                     if ps_dur is None:
                         continue
@@ -914,7 +588,7 @@ def count_nof_training_stations_and_create_json_files(
                     except:
                         continue
 
-                    # Clean Event Duration
+                    # --- Clean Event Duration ---
                     clean_dur = ch_info.get("clean_event_duration_time")
                     if clean_dur is None:
                         continue
@@ -923,103 +597,456 @@ def count_nof_training_stations_and_create_json_files(
                     except:
                         continue
 
-                    # ------------------------------------------
-                    # CATEGORY B2 — LOW SNR
-                    # ------------------------------------------
+                    # ------------------------------------------------------
+                    # CATEGORY B2 — LOW SNR (< min_snr)
+                    # ------------------------------------------------------
                     if station_snr < min_snr:
                         low_snr += 1
                         continue
 
-                    # ------------------------------------------
-                    # CATEGORY B4 — DEPTH OUT OF RANGE
-                    # ------------------------------------------
-                    if depth < 1.0 or depth > 24.0:
-                        bad_depth += 1
-                        continue
-
-                    # ------------------------------------------
-                    # CATEGORY B1 — PS too long
-                    # (saved inside Potential JSON)
-                    # ------------------------------------------
+                    # ------------------------------------------------------
+                    # CATEGORY B1 — HIGH SNR but PS too long
+                    #   (Αυτά μπαίνουν και στο PotentiallyUsedOnTrainingSet.json)
+                    #   Προσοχή: εδώ ΔΕΝ ελέγχουμε depth.
+                    # ------------------------------------------------------
                     if ps_dur > max_ps_duration:
-                        high_snr_and_high_ps_duration += 1
+                        # Υποψήφιος ΜΟΝΟ αν depth είναι γνωστό και εντός ορίων
+                        if depth_km is not None and depthMin <= depth_km <= depthMax:
+                            high_snr_and_high_ps_duration_and_depth_in_bounds += 1
 
-                        year_dict = potential_json.setdefault(year, {})
-                        event_dict = year_dict.setdefault(event_name, {})
-                        event_dict[station_name] = channels
+                            year_dict = potential_json.setdefault(year, {})
+                            event_dict = year_dict.setdefault(event_name, {})
+                            event_dict[station_name] = channels
+
+                        # Αν depth είναι None ή εκτός ορίων → τότε πάει στο B4
+                        else:
+                            depth_out_of_range += 1
 
                         continue
 
-                    # ------------------------------------------
-                    # CATEGORY B3 — Clean Event too short
-                    # ------------------------------------------
+                    # ------------------------------------------------------
+                    # CATEGORY B4 — HIGH SNR & DEPTH OUT OF RANGE
+                    #   Depth < depthMin ή Depth > depthMax
+                    #   Αν depth_km is None → θεωρείται εκτός ορίων
+                    # ------------------------------------------------------
+                    if depth_km is None or depth_km < depthMin or depth_km > depthMax:
+                        depth_out_of_range += 1
+                        continue
+
+                    # ------------------------------------------------------
+                    # CATEGORY B3 — HIGH SNR but Clean Event too short
+                    # ------------------------------------------------------
                     if clean_dur < min_clean_event_duration:
                         high_snr_but_low_clean_event += 1
                         continue
 
-                    # ------------------------------------------
-                    # CATEGORY A — TRAINING
-                    # ------------------------------------------
-                    to_training += 1
+                    # ------------------------------------------------------
+                    # CATEGORY A — Training-eligible
+                    # ------------------------------------------------------
+                    if depthMin <= depth_km <= depthMax:
+                        to_training += 1
 
                     year_dict = training_json.setdefault(year, {})
                     event_dict = year_dict.setdefault(event_name, {})
                     event_dict[station_name] = channels
 
-
-    # ===============================================================
-    # SAVE JSON FILES
-    # ===============================================================
-
-    # Training JSON
-    output_name = f"trainingSet_SNR_GE_{min_snr}_PS_duration_LE_{max_ps_duration}.json"
+    # ----------------------------------------------------------
+    # SAVE: TRAINING SET JSON
+    # ----------------------------------------------------------
+    output_name = f"trainingSet_SNR_GE_{min_snr}_PS_duration_LE_{max_ps_duration}_and_{depthMin}_LE_Depth_LE_{depthMax}.json"
     output_path = os.path.join(LOG_DIR, output_name)
-    save_json(output_path, training_json)
 
-    # Potential JSON
+    save_json(output_path, training_json)
+    print(f"\n💾 Training Set JSON saved to:\n   {output_path}")
+    print(f"📦 Contains {to_training} training-eligible stations.\n")
+
+    # ----------------------------------------------------------
+    # SAVE: POTENTIAL TRAINING SET JSON (B1)
+    # ----------------------------------------------------------
     potential_path = os.path.join(
         LOG_DIR,
-        f"PotentiallyUsedOnTrainingSet_SNR_GE_{min_snr}_PS_duration_GE_{max_ps_duration}.json"
+        f"PotentiallyUsedOnTrainingSet_SNR_GE_{min_snr}_PS_duration_GE_{max_ps_duration}_and_{depthMin}_LE_Depth_LE_{depthMax}.json"
     )
     save_json(potential_path, potential_json)
 
-    # ===============================================================
-    # PRINT REPORT
-    # ===============================================================
-    def print_line(label, value, width=110):
+    print(f"💾 Potential Training Set JSON saved to:\n   {potential_path}")
+    print(f"📦 Contains {high_snr_and_high_ps_duration_and_depth_in_bounds} potentially useful stations.\n")
+
+    # ----------------------------------------------------------
+    # Pretty print report
+    # ----------------------------------------------------------
+    def print_report_line(label, value, width=110):
         dots = "." * max(1, width - len(label))
         print(f"{label} {dots} {value:>6}")
 
-    print("\n📊 *** SIGNAL CLASSIFICATION REPORT ***\n")
+    print("\n📊 *** SIGNAL CLASSIFICATION REPORT ***")
 
-    print_line(f"⚠ NOT USED SET : SNR ≥ {min_snr} & PS_duration_time > {max_ps_duration} sec",
-               high_snr_and_high_ps_duration)
+    # B1
+    label1 = f"⚠ POTENCIALY USED : SNR ≥ {min_snr} & PS_duration_time > {max_ps_duration} sec & {depthMin}≤Depth≤{depthMax}"
+    print_report_line(label1, high_snr_and_high_ps_duration_and_depth_in_bounds)
 
-    print_line(f"⚠ NOT USED SET : SNR < {min_snr}", low_snr)
+    # B2
+    label2 = f"⚠ NOT USED SET : SNR < {min_snr}"
+    print_report_line(label2, low_snr)
 
-    print_line(f"⚠ NOT USED SET : SNR ≥ {min_snr} & clean_event_duration < {min_clean_event_duration} sec",
-               high_snr_but_low_clean_event)
+    # B3
+    label3 = f"⚠ NOT USED SET : SNR ≥ {min_snr} & clean_event_duration < {min_clean_event_duration} sec"
+    print_report_line(label3, high_snr_but_low_clean_event)
 
-    print_line(f"⚠ NOT USED SET : SNR ≥ {min_snr} & (Depth<1Km or Depth>24Km)", bad_depth)
+    # B4
+    label4 = f"⚠ NOT USED SET : SNR ≥ {min_snr} & (Depth < {depthMin} km or Depth > {depthMax} km)"
+    print_report_line(label4, depth_out_of_range)
 
-    print("-" * 120)
+    print("-" * 110)
 
-    print_line(
+    # TRAINING
+    label5 = (
         f"✔ TRAINING SET : SNR ≥ {min_snr} & PS_duration_time ≤ {max_ps_duration} sec "
-        f"& clean_event_duration ≥ {min_clean_event_duration} sec & 1Km≤Depth≤24Km",
-        to_training
+        f"& clean_event_duration ≥ {min_clean_event_duration} sec "
+        f"& {depthMin} km ≤ Depth ≤ {depthMax} km"
+    )
+    print_report_line(label5, to_training)
+
+def find_stations_for_ps_fixed(
+        min_snr: float,
+        max_ps_duration: float,
+        min_event_duration: float,
+        depth_min: float,
+        depth_max: float):
+    """
+    Creates a PS-FIXED JSON structure by scanning boundaries.json
+    and keeping ONLY the stations that satisfy ALL criteria:
+
+    • minimum_station_snr >= min_snr
+    • peak_segment_duration_time <= max_ps_duration
+    • clean_event_duration_time >= min_event_duration
+    • depth_min <= Depth_km <= depth_max  (Depth from info.json)
+
+    Output:
+        Logs/PSfixed_SNR_GE_<min_snr>_PS_LE_<max_ps_duration>_
+             CE_GE_<min_event_duration>_DEPTH_<depth_min>_<depth_max>.json
+    """
+
+    import os
+    from collections import OrderedDict
+    from main import LOG_DIR, BASE_DIR
+
+    boundaries_path = os.path.join(LOG_DIR, "boundaries.json")
+
+    if not os.path.exists(boundaries_path):
+        print(f"❌ File not found: {boundaries_path}")
+        return
+
+    db = load_json(boundaries_path)
+    psfixed_json = {}
+
+    print("\n🔍 Running Find PS Fixed...")
+
+    # --- Traverse year → event → station ---
+    for year, events in db.items():
+
+        if not isinstance(events, dict):
+            continue
+        if year == "total_nof_stations":
+            continue
+
+        for event_name, stations in events.items():
+
+            # --------- Load depth from info.json ---------
+            depth_km = None
+            info_path = os.path.join(BASE_DIR, str(year), event_name, "info.json")
+
+            if os.path.exists(info_path):
+                try:
+                    info = load_json(info_path)
+                    depth_km = (
+                        info.get("depth_km")
+                        or info.get("Depth_km")
+                        or info.get("depth-km")
+                        or info.get("Depth-km")
+                    )
+                    if depth_km is not None:
+                        depth_km = float(depth_km)
+                except:
+                    depth_km = None
+
+            # If no depth → skip event
+            if depth_km is None:
+                continue
+
+            # Depth filter
+            if not (depth_min <= depth_km <= depth_max):
+                continue
+
+            # Now check stations
+            for station_name, channels in stations.items():
+
+                if not isinstance(channels, dict):
+                    continue
+
+                # ---- SNR check ----
+                station_snr = channels.get("minimum_station_snr")
+                if station_snr is None:
+                    continue
+                station_snr = float(station_snr)
+
+                if station_snr < min_snr:
+                    continue
+
+                # ---- Z-channel checks ----
+                station_is_valid = False
+
+                for ch_name, ch_info in channels.items():
+
+                    if not isinstance(ch_info, dict):
+                        continue
+                    if not ch_name.endswith("Z"):
+                        continue
+
+                    # peak segmentation duration
+                    ps = ch_info.get("peak_segment_duration_time")
+                    if ps is None:
+                        continue
+                    try:
+                        ps = float(ps)
+                    except:
+                        continue
+                    if ps > max_ps_duration:
+                        continue
+
+                    # clean event duration
+                    ce = ch_info.get("clean_event_duration_time")
+                    if ce is None:
+                        continue
+                    try:
+                        ce = float(ce)
+                    except:
+                        continue
+                    if ce < min_event_duration:
+                        continue
+
+                    # If we reach here, channel is valid
+                    station_is_valid = True
+                    break
+
+                # Save station subtree if valid
+                if station_is_valid:
+                    year_dict = psfixed_json.setdefault(year, {})
+                    event_dict = year_dict.setdefault(event_name, {})
+                    event_dict[station_name] = channels
+
+    # ------------------------------------------------------------------
+    # COUNT total number of Z-channels (AFTER filtering)
+    # ------------------------------------------------------------------
+    total_nof_stations = 0
+    for year, events in psfixed_json.items():
+        if year == "total_nof_stations":
+            continue
+        for event_name, stations in events.items():
+            for station_name, channels in stations.items():
+                for ch_name, ch_info in channels.items():
+                    if isinstance(ch_info, dict) and ch_name.endswith("Z"):
+                        total_nof_stations += 1
+
+    # ----------------------------------------------------------
+    # REORDER JSON SO total_nof_stations APPEARS FIRST
+    # ----------------------------------------------------------
+    ordered_output = OrderedDict()
+    ordered_output["total_nof_stations"] = total_nof_stations
+
+    for key, val in psfixed_json.items():
+        if key != "total_nof_stations":
+            ordered_output[key] = val
+
+    # ----------------------------------------------------------
+    # SAVE RESULT JSON
+    # ----------------------------------------------------------
+    output_name = (
+        f"StationsForPsFixed_{min_snr}_{max_ps_duration}_"
+        f"({min_event_duration}_({depth_min}-{depth_max}).json"
+    )
+    output_path = os.path.join(LOG_DIR, output_name)
+
+    save_json(output_path, ordered_output)
+
+    print(f"\n💾 PS-FIXED JSON saved to:")
+    print(f"   {output_path}")
+
+    # ----------------------------------------------------------
+    # Count total stations
+    # ----------------------------------------------------------
+    total_stations = sum(
+        len(stations) for (year, events) in psfixed_json.items()
+        if isinstance(events, dict)
+        for (event_name, stations) in events.items()
     )
 
-    print("\n💾 Training Set JSON saved to:", output_path)
-    print("💾 Potential JSON saved to:", potential_path)
+    print(f"📦 Total stations included: {total_stations}")
+    print(f"🎧 Total Z-channels included: {total_nof_stations}\n")
+
+    return ordered_output
+
+def find_stations_for_ps_variants_and_clean_events(
+        min_snr: float,
+        max_ps_duration: float,
+        depth_min: float,
+        depth_max: float):
+    """
+    Creates a PS-VARIANT JSON structure by scanning boundaries.json
+    and keeping ONLY the stations that satisfy ALL criteria:
+
+    • minimum_station_snr >= min_snr
+    • peak_segment_duration_time <= max_ps_duration
+    • depth_min <= Depth_km <= depth_max  (Depth from info.json)
+    • At least one Z-channel satisfies the above
+
+    Output:
+        Logs/PSvariant_SNR_GE_<min_snr>_PS_LE_<max_ps_duration>_
+             DEPTH_<depth_min>_<depth_max>.json
+    """
+
+    import os
+    from collections import OrderedDict
+    from main import LOG_DIR, BASE_DIR
+
+    boundaries_path = os.path.join(LOG_DIR, "boundaries.json")
+
+    if not os.path.exists(boundaries_path):
+        print(f"❌ File not found: {boundaries_path}")
+        return
+
+    db = load_json(boundaries_path)
+    psvariant_json = {}
+
+    print("\n🔍 Running Find PS Variant...")
+
+    # ------------------------------------------------------------
+    # Traverse year → event → station
+    # ------------------------------------------------------------
+    for year, events in db.items():
+
+        if not isinstance(events, dict):
+            continue
+        if year == "total_nof_stations":
+            continue
+
+        for event_name, stations in events.items():
+
+            # --------- Load depth from info.json ---------
+            depth_km = None
+            info_path = os.path.join(BASE_DIR, str(year), event_name, "info.json")
+
+            if os.path.exists(info_path):
+                try:
+                    info = load_json(info_path)
+                    depth_km = (
+                        info.get("depth_km")
+                        or info.get("Depth_km")
+                        or info.get("depth-km")
+                        or info.get("Depth-km")
+                    )
+                    if depth_km is not None:
+                        depth_km = float(depth_km)
+                except:
+                    depth_km = None
+
+            if depth_km is None:
+                continue
+
+            # depth filtering
+            if not (depth_min <= depth_km <= depth_max):
+                continue
+
+            # ------------------------------------------------------------
+            # Now evaluate each station
+            # ------------------------------------------------------------
+            for station_name, channels in stations.items():
+
+                if not isinstance(channels, dict):
+                    continue
+
+                # SNR check
+                station_snr = channels.get("minimum_station_snr")
+                if station_snr is None:
+                    continue
+                station_snr = float(station_snr)
+
+                if station_snr < min_snr:
+                    continue
+
+                # Z-channel validation
+                station_is_valid = False
+
+                for ch_name, ch_info in channels.items():
+
+                    if not isinstance(ch_info, dict):
+                        continue
+                    if not ch_name.endswith("Z"):
+                        continue
+
+                    # peak segmentation duration
+                    ps = ch_info.get("peak_segment_duration_time")
+                    if ps is None:
+                        continue
+                    try:
+                        ps = float(ps)
+                    except:
+                        continue
+
+                    if ps > max_ps_duration:
+                        continue
+
+                    # If reached here, channel is valid
+                    station_is_valid = True
+                    break
+
+                if station_is_valid:
+                    year_dict = psvariant_json.setdefault(year, {})
+                    event_dict = year_dict.setdefault(event_name, {})
+                    event_dict[station_name] = channels
+
+    # ------------------------------------------------------------
+    # Count total Z-channels in output dataset
+    # ------------------------------------------------------------
+    total_nof_stations = 0
+    for year, events in psvariant_json.items():
+        for event_name, stations in events.items():
+            for station_name, channels in stations.items():
+                for ch_name, ch_info in channels.items():
+                    if isinstance(ch_info, dict) and ch_name.endswith("Z"):
+                        total_nof_stations += 1
+
+    # ------------------------------------------------------------
+    # REORDER JSON so that total_nof_stations is FIRST
+    # ------------------------------------------------------------
+    ordered_output = OrderedDict()
+    ordered_output["total_nof_stations"] = total_nof_stations
+
+    for key, val in psvariant_json.items():
+        ordered_output[key] = val
+
+    # ------------------------------------------------------------
+    # SAVE RESULT FILE
+    # ------------------------------------------------------------
+    output_name = (
+        f"StationsForPsVariantsAndCleanEvents_{min_snr}_{max_ps_duration}_"
+        f"({depth_min}-{depth_max}).json"
+    )
+
+    output_path = os.path.join(LOG_DIR, output_name)
+    save_json(output_path, ordered_output)
+
+    print(f"\n💾 PS-VARIANT JSON saved to:")
+    print(f"   {output_path}")
+    print(f"📦 Total Z-channels included: {total_nof_stations}\n")
+
+    return ordered_output
 
 
 # ==========================================================
 if __name__ == "__main__":
     #find_boundaries()
-    #plot_clean_event_duration_distribution()
-    #plot_peak_segmentation_duration_distribution()
-    #plot_snr_distribution()
-    #plot_depth_distribution()
-    count_nof_training_stations_and_create_json_files(5, 30)
+
+    find_stations_for_ps_fixed(5, 30, 30, 1,24)
+    find_stations_for_ps_variants_and_clean_events(5, 30, 1, 24)
     #create_cutted_signal_files(5, 30)

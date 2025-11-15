@@ -11,7 +11,7 @@ from gaps import find_files_for_gaps
 from glitches import find_files_for_glitches_parallel
 from instrument_correction import instrument_correction
 from overlaps import find_files_for_overlaps
-from peak_segmentation import  find_boundaries
+from boundaries_and_cut_signals import  find_boundaries
 from snr import find_snr
 from missingFiles import find_stations_with_issues
 
