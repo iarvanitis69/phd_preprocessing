@@ -304,9 +304,7 @@ of anthropogenic origin. Therefore, we decided to filter them out using a fourth
 cutoff frequency set to 1 Hz. The function filter_all_files() takes as input the files *_demeanDetrend_IC.mseed files and
 provides as output the files *_demeanDetrend_IC_BPF.mseed file
 
-### boundaries.py
-
-### boundaries
+### boundaries_HHZ.py
 
 The next step is to determine the peak segmentation of the HHZ signal using the function find_boundaries().
 To achieve this, we first identify the onset of the seismic wave using the Akaike Information Criterion (AIC) algorithm.
@@ -394,6 +392,8 @@ consistent dataset for downstream processing pipelines such as GreensonNet.
 
 ![img.png](images/signal_with_boundaries.png)
 
+### distributions.py
+
 After computing the segmentation boundaries for all stations, the next step is to analyze the distribution of the 
 extracted parameters. The distributions that we generate — the histograms and overall statistical spreads — will help us 
 determine which signals are suitable for inclusion in the training set and which ones should be excluded.
@@ -458,8 +458,31 @@ detection was unsuccessful. This mechanism ensures that problematic waveforms ar
 preprocessing pipeline remains robust when restarting or resuming execution and AIC failures can be reviewed later for 
 diagnostic or quality-control purposes.
 
-### Create cutted signal files
-Using the function create_cutted_signal_files, we start from the original file with the extension
+### cutting_signals.py
+
+#### find_cutting_info()
+Using the Find Cutting Info function, we identify all NZE signals that fall into three distinct categories:
+
+ - Fixed Peak Segment
+ - Variant Peak Segment
+ - Clean Event Signal
+
+More specifically, in order to determine the signals included in each category, the function evaluates the following 
+criteria:
+
+1) SNR threshold: Only stations with a minimum_station_snr value above the user-defined threshold are selected.
+2) Peak segment duration: Stations whose peak_segment_duration_HHZ_time is below the specified limit are included in 
+   both the Fixed and Variant categories.
+3) Clean-event duration: Stations whose clean_event_duration_HHZ_time exceeds the required minimum duration are 
+   additionally included in the Clean Event category (and therefore in the Fixed category as well).
+4) Depth filtering: Events whose depth_km lies outside the specified depth range are excluded entirely.
+
+This categorization allows the user to clearly separate the stations into fixed-length peak windows, variable-length 
+peak windows, and complete event windows, ensuring a consistent preprocessing pipeline for subsequent steps such as 
+Green’s function estimation or machine-learning-based signal analysis.
+
+#### Create cutted signal files
+Using the function create_cutted_signal_files(), we start from the original file with the extension
 _demeanDetrend_IC_BPF.mseed and generate three new files:
 
  - _demeanDetrend_IC_BPF_PSfixed.mseed      
