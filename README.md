@@ -523,17 +523,42 @@ This function classifies each station based on four criteria:
 
 Using these thresholds, the function decides which seismic signals are suitable for inclusion in the Training Set.
 
-#### The count_nof_training_stations_and_create_json_files()
-This function calculates the size of the training set stations
+#### The sinals classification
+This function calculates the all calculated parameters
 
-📊 *** SIGNAL CLASSIFICATION REPORT ***
-⚠ NOT USED SET : SNR ≥ 5 & PS_duration_time > 30 sec : 594
-⚠ NOT USED SET : SNR < 5 : 9025
-⚠ NOT USED SET : SNR ≥ 5 & clean_event_duration_time < 30 sec : 1
--------------------------------------------------------------------------------------------------------------------
-✔ TRAINING SET : SNR ≥ 5 & PS_duration_time ≤ 30 sec & clean_event_duration_time ≥ 30 sec & 1Km<=Depth<=24Km : 7836
+```
+{
+  "total_station_signals": 17596,
+  "AIC_failure_signals": 140,
+  "NOT_USED_PS_too_long_(PS>30.0)": 594,
+  "NOT_USED_SNR_below_5": 9025,
+  "NOT_USED_clean_event_too_short_(<30.0)": 1,
+  "NOT_USED_Depth_outside_1.0-24.0km": 33,
+  "TRAINING_SET": 7803,
+  "parameters": {
+    "min_snr": 5,
+    "max_ps_duration": 30.0,
+    "min_clean_event_duration": 30.0,
+    "depth_min": 1.0,
+    "depth_max": 24.0
+  }
+}
+```
 
-
+| Key Name                                          | Meaning                                                                 |
+|--------------------------------------------------|-------------------------------------------------------------------------|
+| total_station_signals                             | Total number of station–event HHZ signals processed                     |
+| AIC_failure_signals                               | Signals where AIC failed to detect a valid event start                  |
+| NOT_USED_PS_too_long_(PS>30.0)                    | Signals rejected because peak segment duration exceeds max allowed      |
+| NOT_USED_SNR_below_5                              | Signals rejected because their station SNR is below the SNR threshold   |
+| NOT_USED_clean_event_too_short_(<30.0)            | Signals rejected because their clean event duration is too short        |
+| NOT_USED_Depth_outside_1.0-24.0km                 | Signals rejected because the earthquake depth is outside allowed range  |
+| TRAINING_SET                                      | Total number of signals that satisfy ALL criteria and are accepted for training |
+| parameters.min_snr                                | Minimum required SNR for a station signal                               |
+| parameters.max_ps_duration                        | Maximum allowed peak segment duration (sec)                              |
+| parameters.min_clean_event_duration               | Minimum allowed clean event duration (sec)                               |
+| parameters.depth_min                              | Minimum acceptable earthquake depth (km)                                 |
+| parameters.depth_max                              | Maximum acceptable earthquake depth (km)                                 |
 
 ### convert_ΝΖΕ_to_LQT.py
 The nextstep of the preprocessing pipeline is the transformation from the NZE coordinate system to the LQT coordinate 
