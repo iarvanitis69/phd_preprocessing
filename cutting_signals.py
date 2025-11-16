@@ -321,7 +321,7 @@ def create_cutting_signals(
                     if not os.path.exists(station_path):
                         continue
 
-                    # 📁 Common output directory (same for all cutting modes)
+                    # 📁 common output directory
                     folder_name = (
                         f"{min_snr}_{max_ps_duration}_"
                         f"{min_event_duration}_({depth_min}-{depth_max})"
@@ -329,100 +329,111 @@ def create_cutting_signals(
                     output_dir = os.path.join(station_path, folder_name)
                     os.makedirs(output_dir, exist_ok=True)
 
-                    for ch_name, ch_info in channels.items():
+                    # find original IC_BPF file
+                    orig_file = None
+                    for fname in os.listdir(station_path):
+                        if fname.endswith("_demeanDetrend_IC_BPF.mseed"):
+                            orig_file = os.path.join(station_path, fname)
+                            break
 
-                        if isinstance(ch_info, dict):
-                            chanZ = ch_info
+                    if orig_file is None:
+                        print(f"⚠️ No IC_BPF file found for {station_name} in {station_path}")
+                        continue
 
-                        # ------------------------------------------------
-                        # FIND ORIGINAL FILE EXACTLY AS STORED ON DISK
-                        # Match pattern:   ..._demeanDetrend_IC_BPF.mseed
-                        # ------------------------------------------------
-                        orig_file = None
-                        for fname in os.listdir(station_path):
-                            if fname.endswith("_demeanDetrend_IC_BPF.mseed"):
-                                orig_file = os.path.join(station_path, fname)
-                                if orig_file is None:
-                                    print(f"⚠️ No IC_BPF file for {station_name} {ch_name} in {station_path}")
-                                    continue
+                    # read waveform
+                    try:
+                        st = read(orig_file)
+                    except Exception as e:
+                        print(f"⚠️ Cannot read {orig_file}: {e}")
+                        continue
 
-                                # Read waveform
-                                try:
-                                    st = read(orig_file)
-                                except Exception as e:
-                                    print(f"⚠️ Cannot read {orig_file}: {e}")
-                                    continue
+                    tr = st[0]
+                    sr = tr.stats.sampling_rate
 
-                                tr = st[0]
-                                sr = tr.stats.sampling_rate
+                    # ------------------------------------------------
+                    # INDICES FROM JSON
+                    # ------------------------------------------------
+                    start_idx = channels.get("start_of_event_HHZ_idx")
+                    end_peak_idx = channels.get("end_of_peak_segment_HHZ_idx")
+                    end_event_idx = channels.get("end_of_event_HHZ_idx")
 
-                                # ------------------------------------------------
-                                # INDICES FROM JSON
-                                # ------------------------------------------------
-                                start_idx = channels.get("start_of_event_HHZ_idx")
-                                end_peak_idx = channels.get("end_of_peak_segment_HHZ_idx")
-                                end_event_idx = channels.get("end_of_event_HHZ_idx")
+                    if start_idx is None or end_peak_idx is None or end_event_idx is None:
+                        continue
 
-                                if start_idx is None or end_peak_idx is None or end_event_idx is None:
-                                    continue
+                    # ====================================================
+                    #  A)  PS-FIXED
+                    # ====================================================
+                    if mode == "PSfixed":
 
-                                # ------------------------------------------------
-                                # A) PS-Fixed
-                                # ------------------------------------------------
-                                if mode == "PSfixed":
+                        duration_samples = int(round(max_peak_seconds * sr))
 
-                                    duration_samples = int(round(max_peak_seconds * sr))
+                        output_name = orig_file.replace(
+                            "_demeanDetrend_IC_BPF.mseed",
+                            "_demeanDetrend_IC_BPF_PSfixed.mseed"
+                        )
+                        output_name = os.path.join(output_dir, os.path.basename(output_name))
 
-                                    # CREATE NEW FILENAME BASED ON ORIGINAL
-                                    output_name = orig_file.replace(
-                                        "_demeanDetrend_IC_BPF.mseed",
-                                        "_demeanDetrend_IC_BPF_PSfixed.mseed"
-                                    )
-                                    output_name = os.path.join(output_dir, os.path.basename(output_name))
+                        # ----- SKIP IF FILE ALREADY EXISTS -----
+                        if os.path.exists(output_name):
+                            print(f"⏭️ Skip (exists): {output_name}")
+                            continue
 
-                                    seg = tr.copy().data[start_idx:start_idx + duration_samples]
-                                    if len(seg) == 0:
-                                        continue
+                        seg = tr.copy().data[start_idx:start_idx + duration_samples]
+                        if len(seg) == 0:
+                            continue
 
-                                    tr2 = tr.copy()
-                                    tr2.data = seg
-                                    tr2.write(output_name, format="MSEED")
-                                    print(f"Create signal: {output_name}")
-                                # ------------------------------------------------
-                                # B) PS-Variant
-                                # ------------------------------------------------
-                                if mode == "PSvariant":
-                                    output_name = orig_file.replace(
-                                        "_demeanDetrend_IC_BPF.mseed",
-                                        "_demeanDetrend_IC_BPF_PSvariant.mseed"
-                                    )
-                                    output_name = os.path.join(output_dir, os.path.basename(output_name))
+                        tr2 = tr.copy()
+                        tr2.data = seg
+                        tr2.write(output_name, format="MSEED")
+                        print(f"✔ Created: {output_name}")
 
-                                    seg = tr.copy().data[start_idx:end_peak_idx]
-                                    if len(seg) == 0:
-                                        continue
+                    # ====================================================
+                    #  B)  PS-VARIANT
+                    # ====================================================
+                    if mode == "PSvariant":
 
-                                    tr2 = tr.copy()
-                                    tr2.data = seg
-                                    tr2.write(output_name, format="MSEED")
+                        output_name = orig_file.replace(
+                            "_demeanDetrend_IC_BPF.mseed",
+                            "_demeanDetrend_IC_BPF_PSvariant.mseed"
+                        )
+                        output_name = os.path.join(output_dir, os.path.basename(output_name))
 
-                                    # ------------------------------------------------
-                                    # C) Whole Event
-                                    # ------------------------------------------------
-                                    whole_name = orig_file.replace(
-                                        "_demeanDetrend_IC_BPF.mseed",
-                                        "_demeanDetrend_IC_BPF_WholeEvent.mseed"
-                                    )
-                                    whole_name = os.path.join(output_dir, os.path.basename(whole_name))
+                        # ----- SKIP IF FILE ALREADY EXISTS -----
+                        if os.path.exists(output_name):
+                            print(f"⏭️ Skip (exists): {output_name}")
+                            continue
 
-                                    seg_event = tr.copy().data[start_idx:end_event_idx]
-                                    if len(seg_event) == 0:
-                                        continue
+                        seg = tr.copy().data[start_idx:end_peak_idx]
+                        if len(seg) == 0:
+                            continue
 
-                                    tr3 = tr.copy()
-                                    tr3.data = seg_event
-                                    tr3.write(whole_name, format="MSEED")
-                                    print(f"Create :{whole_name}")
+                        tr2 = tr.copy()
+                        tr2.data = seg
+                        tr2.write(output_name, format="MSEED")
+                        print(f"✔ Created: {output_name}")
+
+                        # ====================================================
+                        #  C)  WHOLE EVENT (only in PSvariant mode)
+                        # ====================================================
+                        whole_name = orig_file.replace(
+                            "_demeanDetrend_IC_BPF.mseed",
+                            "_demeanDetrend_IC_BPF_WholeEvent.mseed"
+                        )
+                        whole_name = os.path.join(output_dir, os.path.basename(whole_name))
+
+                        # ----- SKIP IF FILE ALREADY EXISTS -----
+                        if os.path.exists(whole_name):
+                            print(f"⏭️ Skip (exists): {whole_name}")
+                            continue
+
+                        seg_event = tr.copy().data[start_idx:end_event_idx]
+                        if len(seg_event) == 0:
+                            continue
+
+                        tr3 = tr.copy()
+                        tr3.data = seg_event
+                        tr3.write(whole_name, format="MSEED")
+                        print(f"✔ Created: {whole_name}")
 
     # ------------------------------------------------------------
     # RUN CUTTING
