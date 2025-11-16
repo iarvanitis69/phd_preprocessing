@@ -3,135 +3,200 @@ import numpy as np
 from obspy.geodetics.base import gps2dist_azimuth, locations2degrees
 import json
 
-def convert_ENZ_to_LQT_files(base_dir, excluded_stations, event_coords):
+def convert_NZE_to_LQT():
     """
-    Αναζητά αναδρομικά όλα τα ENZ αρχεία ανά σταθμό και δημιουργεί LQT αρχεία,
-    εξαιρώντας όποιους σταθμούς δίνονται στο excluded_stations.
+    Converts NZE (HHN, HHE, HHZ or BHN, BHE, BHZ) signals into LQT signals
+    for ALL three sets:
+        • PSfixed
+        • PSvariant
+        • WholeEvent
 
-    Parameters:
-        base_dir: Διαδρομή προς τον βασικό φάκελο με τα γεγονότα
-        excluded_stations: Λίστα με ονόματα σταθμών προς παράλειψη (π.χ. ["HL.SANT", "HT.APE"])
-        event_coords: [lat, lon, depth] του σεισμού σε km
+    For κάθε set (π.χ. PSfixed):
+        - Εντοπίζει 3 αρχεία (N,E,Z)
+        - Υπολογίζει LQT rotation χρησιμοποιώντας το επίκεντρο από info.json
+          και τη θέση του σταθμού από το network.station.xml
+        - Παράγει 3 νέα αρχεία:
+              *_L.mseed
+              *_Q.mseed
+              *_T.mseed
 
-    Δημιουργεί αρχεία *_L.mseed, *_Q.mseed, *_T.mseed σε κάθε φάκελο σταθμού
+    Σύνολο παραγόμενων αρχείων: 9 ανά σταθμό (3 sets × 3 components).
     """
-    for root, dirs, files in os.walk(base_dir):
-        for file in files:
-            if file.endswith("_E.msid"):
-                # path_E = os.path.join(root, file)
-                # path_N = path_E.replace("_E.msid", "_N.msid")
-                # path_Z = path_E.replace("_E.msid", "_Z.msid")
-                #
-                # if not (os.path.exists(path_N) and os.path.exists(path_Z)):
-                #     print(f"❌ Λείπει κάποιο από τα N ή Z για: {file}")
-                #     continue
 
-                # Από το path, απομονώνουμε το σταθμό (π.χ. HL.SANT)
-                parts = os.path.normpath(path_E).split(os.sep)
-                if len(parts) < 2:
+    import os
+    import numpy as np
+    from obspy import read
+    from obspy.geodetics import gps2dist_azimuth
+
+    from main import BASE_DIR
+    from utils import load_json
+
+    # ===============================================
+    # Βοηθητικό: υπολογισμός rotation matrix R (3x3)
+    # ===============================================
+    def rotation_matrix_LQT(stla, stlo, evla, evlo):
+        """
+        Υπολογίζει τον πίνακα LQT rotation:
+        L: άξονας προς το επίκεντρο
+        Q: οριζόντια κάθετη συνιστώσα
+        T: κατακόρυφη συνιστώσα
+
+        Επιστρέφει: 3×3 rotation matrix
+        """
+
+        # Διεύθυνση από σταθμό → επίκεντρο
+        _, az, _ = gps2dist_azimuth(stla, stlo, evla, evlo)
+        baz = (az + 180) % 360
+
+        # Μετατροπή μοίρες → rad
+        az_r = np.deg2rad(az)
+        baz_r = np.deg2rad(baz)
+
+        # L: radial direction
+        L = np.array([
+            np.sin(baz_r),      # North
+            np.cos(baz_r),      # East
+            0
+        ])
+
+        # Q: transverse (left)
+        Q = np.array([
+            np.cos(baz_r),
+            -np.sin(baz_r),
+            0
+        ])
+
+        # T: vertical
+        T = np.array([0, 0, 1])
+
+        R = np.vstack([L, Q, T])
+        return R
+
+    # ===============================================
+    # Σάρωση όλων των ετών
+    # ===============================================
+    for year in os.listdir(BASE_DIR):
+        year_path = os.path.join(BASE_DIR, year)
+        if not os.path.isdir(year_path):
+            continue
+
+        # Σάρωση events
+        for event_name in os.listdir(year_path):
+
+            event_path = os.path.join(year_path, event_name)
+            if not os.path.isdir(event_path):
+                continue
+
+            # ------------- Load epicenter info.json -------------
+            info_path = os.path.join(event_path, "info.json")
+            if not os.path.exists(info_path):
+                continue
+
+            info = load_json(info_path)
+            evla = float(info["latitude"])
+            evlo = float(info["longitude"])
+
+            # ----------- Σάρωση σταθμών -------------------
+            for station_name in os.listdir(event_path):
+
+                station_path = os.path.join(event_path, station_name)
+                if not os.path.isdir(station_path):
                     continue
-                station = parts[-2]  # Αναμένουμε δομή: .../<event>/<station>/...
-
-                if station in excluded_stations:
-                    print(f"⏭️ Παράλειψη σταθμού: {station}")
+                if station_name == "info.json":
                     continue
 
-                # Ανάκτηση συντεταγμένων σταθμού από info.json
-                info_path = os.path.join(root, "..", "..", "Stations", station, "info.json")
-                info_path = os.path.abspath(info_path)
-                if not os.path.exists(info_path):
-                    print(f"❌ Δεν βρέθηκε info.json για {station}")
+                # -------- Load station coordinates from XML --------
+                xml_path = os.path.join(station_path, f"{station_name}.xml")
+                if not os.path.exists(xml_path):
+                    print(f"⚠️ Missing XML for {station_name}")
                     continue
-
-                with open(info_path) as f:
-                    station_info = json.load(f)
-                station_coords = [
-                    station_info["latitude"],
-                    station_info["longitude"],
-                    station_info.get("elevation_km", 0.0)
-                ]
 
                 try:
-                    phi, theta = calculate_angles(station_coords, event_coords)
-                    convert_ENZ_files_to_LQT_for_station(path_E, path_N, path_Z, phi, theta)
-                    print(f"✅ Μετατροπή LQT για {station} στο {root}")
+                    from obspy import read_inventory
+                    inv = read_inventory(xml_path)
+                    net = inv.networks[0]
+                    sta = net.stations[0]
+                    stla = sta.latitude
+                    stlo = sta.longitude
                 except Exception as e:
-                    print(f"❌ Σφάλμα σε {station}: {e}")
+                    print(f"⚠️ Cannot read XML {xml_path}: {e}")
+                    continue
 
-def calculate_angles(station_coords, event_coords):
-    """
-    Υπολογίζει την αζιμουθιακή γωνία (phi) και τη γωνία κατάδυσης (theta)
-    από τον σεισμό προς τον σταθμό, χρησιμοποιώντας την obspy.geodetics.base.gps2dist_azimuth.
+                # -------- Rotation matrix --------
+                R = rotation_matrix_LQT(stla, stlo, evla, evlo)
 
-    Parameters:
-        station_coords: [lat, lon, depth] σε km
-        event_coords: [lat, lon, depth] σε km
+                # ======================================================
+                #  Επεξεργασία 3 SETS:
+                #      - PSfixed
+                #      - PSvariant
+                #      - WholeEvent
+                # ======================================================
+                waveform_sets = {
+                    "PSfixed":    "_demeanDetrend_IC_BPF_PSfixed.mseed",
+                    "PSvariant":  "_demeanDetrend_IC_BPF_PSvariant.mseed",
+                    "WholeEvent": "_demeanDetrend_IC_BPF_WholeEvent.mseed"
+                }
 
-    Returns:
-        phi_deg: αζιμουθιακή γωνία σε μοίρες [0–360]
-        theta_deg: γωνία κατάδυσης σε μοίρες
-    """
-    station_lat, station_lon, station_depth = station_coords
-    event_lat, event_lon, event_depth = event_coords
+                for set_name, suffix in waveform_sets.items():
 
-    # Υπολογισμός αζιμουθιακής γωνίας με ObsPy
-    _, azimuth_deg, _ = gps2dist_azimuth(event_lat, event_lon, station_lat, station_lon)
-    phi_deg = azimuth_deg  # ήδη σε μοίρες
+                    # --- Εντοπισμός αρχείων N,E,Z ---
+                    chan_files = {"N": None, "E": None, "Z": None}
 
-    # Υπολογισμός επιφανειακής απόστασης σε km (με great-circle distance)
-    deg_distance = locations2degrees(event_lat, event_lon, station_lat, station_lon)
-    R = 6371.0  # Ακτίνα Γης σε km
-    horizontal_distance_km = np.radians(deg_distance) * R
+                    for f in os.listdir(station_path):
+                        if not f.endswith(suffix):
+                            continue
 
-    # Υπολογισμός γωνίας κατάδυσης (theta)
-    delta_depth_km = station_depth - event_depth
-    theta_rad = np.arctan2(delta_depth_km, horizontal_distance_km)
-    theta_deg = np.degrees(theta_rad)
+                        full = os.path.join(station_path, f)
 
-    return phi_deg, theta_deg
+                        if "__HHN" in f:
+                            chan_files["N"] = full
+                        elif "__HHE" in f:
+                            chan_files["E"] = full
+                        elif "__HHZ" in f:
+                            chan_files["Z"] = full
+
+                    # Αν λείπει κανάλι → skip
+                    if None in chan_files.values():
+                        continue
+
+                    # ---- Load N/E/Z traces ----
+                    try:
+                        trN = read(chan_files["N"])[0]
+                        trE = read(chan_files["E"])[0]
+                        trZ = read(chan_files["Z"])[0]
+                    except Exception as e:
+                        print(f"⚠️ Failed reading NZE for {station_name}: {e}")
+                        continue
+
+                    # ---- Check same length ----
+                    if not (len(trN.data) == len(trE.data) == len(trZ.data)):
+                        print(f"⚠️ Mismatch lengths for {station_name} {set_name}")
+                        continue
+
+                    # ---- Construct 3×N matrix ----
+                    M = np.vstack([
+                        trN.data.astype(np.float32),
+                        trE.data.astype(np.float32),
+                        trZ.data.astype(np.float32)
+                    ])
+
+                    # ---- Apply rotation ----
+                    LQT = R @ M
+
+                    # ---- Write L / Q / T ----
+                    components = ["L", "Q", "T"]
+
+                    for i, comp in enumerate(components):
+
+                        tr_new = trZ.copy()
+                        tr_new.data = LQT[i].astype(np.float32)
+
+                        outname = chan_files["Z"].replace(".mseed", f"_{comp}.mseed")
+                        tr_new.write(outname, format="MSEED")
+
+                        print(f"✔ Created {set_name} → {outname}")
 
 
-def read_msid_file(path):
-    return np.fromfile(path, dtype=np.float32)
-
-def write_msid_file(path, data):
-    data.astype(np.float32).tofile(path)
-
-def convert_ENZ_files_to_LQT_for_station(path_E, path_N, path_Z, phi_deg, theta_deg):
-    # Ανάγνωση δεδομένων
-    E = read_msid_file(path_E)
-    N = read_msid_file(path_N)
-    Z = read_msid_file(path_Z)
-
-    if not (len(E) == len(N) == len(Z)):
-        raise ValueError("Τα αρχεία E, N, Z έχουν διαφορετικό μήκος!")
-
-    # Μετατροπή γωνιών σε ακτίνια
-    phi = np.radians(phi_deg)
-    theta = np.radians(theta_deg)
-
-    # Μετασχηματισμός ENZ → LQT
-    L = np.sin(theta) * np.cos(phi) * E + np.sin(theta) * np.sin(phi) * N + np.cos(theta) * Z
-    Q = np.cos(theta) * np.cos(phi) * E + np.cos(theta) * np.sin(phi) * N - np.sin(theta) * Z
-    T = -np.sin(phi) * E + np.cos(phi) * N
-
-    # Δημιουργία paths εξόδου με βάση το path_E
-    base_folder = os.path.dirname(path_E)
-    base_name = os.path.basename(path_E)
-
-    # Αφαίρεση suffix (E.msid) και αντικατάσταση
-    if "_E.msid" in base_name:
-        base_prefix = base_name.replace("_E.mseed", "")
-    else:
-        raise ValueError("Το όνομα του αρχείου E δεν είναι της μορφής *_E.mseed")
-
-    path_L = os.path.join(base_folder, f"{base_prefix}_L.mseed")
-    path_Q = os.path.join(base_folder, f"{base_prefix}_Q.mseed")
-    path_T = os.path.join(base_folder, f"{base_prefix}_T.mseed")
-
-    # Εγγραφή αρχείων
-    write_msid_file(path_L, L)
-    write_msid_file(path_Q, Q)
-    write_msid_file(path_T, T)
-
-    return path_L, path_Q, path_T
+# ==========================================================
+if __name__ == "__main__":
+    convert_NZE_to_LQT()
