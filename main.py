@@ -12,6 +12,7 @@ from glitches import find_files_for_glitches_parallel
 from instrument_correction import instrument_correction
 from overlaps import find_files_for_overlaps
 from boundaries_HHZ import  find_boundaries
+from signal_classification_report import classify_signals
 from snr import find_snr
 from missingFiles import find_stations_with_issues
 
@@ -70,17 +71,26 @@ def main():
     # print("🔍 Create Depth distribution...")
     # plot_depth_distribution()
 
+    minSNR = 5
+    maxPsDuration = 30
+    minCleanEventDuration = 30
+    minDepth = 1
+    maxDepth =24
+
     # print("🔍 Find cutting info...")
-    #find_cutting_info(5, 30, 30, 1, 24)
+    #find_cutting_info(minSNR, maxPsDuration, minCleanEventDuration, minDepth, maxDepth)
+
+    # print("🔍 Classification reporting...")
+    #classify_signals(minSNR, maxPsDuration, minCleanEventDuration, minDepth, maxDepth)
 
     # print("🔍 Create cutting stations..")
-    #create_cutting_signals(5, 30, 30, 1,24)
+    #create_cutting_signals(minSNR, maxPsDuration, minCleanEventDuration, minDepth, maxDepth)
 
     # print("🔍 Conversion to LQT")
-    #convert_to_LQT(5, 30, 30, 1, 24)
+    #convert_to_LQT(minSNR, maxPsDuration, minCleanEventDuration, minDepth, maxDepth)
 
     # print("🔍 Normalize Z score all files...")
-    #normalize_Z_score(5, 30, 30, 1, 24)
+    #normalize_Z_score(minSNR, maxPsDuration, minCleanEventDuration, minDepth, maxDepth)
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()  # προαιρετικό αλλά ασφαλές
